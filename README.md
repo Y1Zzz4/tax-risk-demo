@@ -5,13 +5,13 @@
 ## 功能
 
 - 智能解答：输入风险应对或政策理解问题，返回 5 类结构化辅助建议。
-- 报告质量复核：上传 `.xlsx`，读取首个工作表中的 `qksm` 列，选择一条报告正文后调用大模型复核。
+- 报告质量复核：上传 `.xlsx`类型文件，系统会读取首个工作表中的 `qksm` 列，选择一条报告正文后调用大模型复核。
 - 示例 Excel：`demo_reports.xlsx`，包含 5 条虚构脱敏报告。
 
 ## 依赖安装
 
-建议使用 Python 3.10 或更高版本，以下命令用于在linux系统上运行，。
-若采用其他环境管理方法，只需下载相应依赖即可。
+建议使用 Python 3.10 或更高版本，以下命令用于在linux系统上创建虚拟环境并安装依赖。
+若采用其他环境管理方法，只需安装相应依赖即可。
 
 ```bash
 python3 -m venv .venv
@@ -21,9 +21,7 @@ pip install -r requirements.txt
 
 ## 配置 DeepSeek
 
-```bash
-cd .env
-```
+在根目录下创建.env文件(/tax-risk-demo/.env)
 
 填写：
 
@@ -31,14 +29,14 @@ cd .env
 DEEPSEEK_API_KEY=你的 DeepSeek API Key
 DEEPSEEK_BASE_URL=https://api.deepseek.com
 DEEPSEEK_MODEL=deepseek-v4-pro
+DEEPSEEK_TIMEOUT_SECONDS=60
 ```
 
 如果未配置 `DEEPSEEK_API_KEY`，页面可以正常打开，调用智能解答或报告复核时会提示需要配置 API Key。
 
-## 运行
+## 启动
 
 ```bash
-source .venv/bin/activate
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
