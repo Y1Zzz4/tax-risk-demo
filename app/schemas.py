@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 
 
 class ChatRequest(BaseModel):
@@ -8,10 +8,13 @@ class ChatRequest(BaseModel):
 
 
 class ChatResponse(BaseModel):
+    answer_summary: str
     question_understanding: str
     verification_directions: list[str]
     suggested_measures: list[str]
-    supplementary_materials: list[str]
+    reference_materials: list[str] = Field(
+        validation_alias=AliasChoices("reference_materials", "supplementary_materials")
+    )
     risk_notice: str
 
 
@@ -20,6 +23,9 @@ class ParsedReportItem(BaseModel):
     record_id: str | None = None
     taxpayer_name: str | None = None
     task_name: str | None = None
+    risk_brief: str | None = None
+    manual_has_issue: str | None = None
+    rectification_status: str | None = None
     preview: str
     full_text: str
     text_length: int
@@ -31,6 +37,12 @@ class ReportParseResponse(BaseModel):
 
 class ReportReviewRequest(BaseModel):
     report_text: str = Field(..., min_length=1, max_length=60000)
+    record_id: str | None = None
+    taxpayer_name: str | None = None
+    task_name: str | None = None
+    risk_brief: str | None = None
+    manual_has_issue: str | None = None
+    rectification_status: str | None = None
 
 
 class StructureRow(BaseModel):

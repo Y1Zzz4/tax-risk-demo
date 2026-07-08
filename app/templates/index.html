@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{{ app_name }}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="/static/styles.css">
+    <link rel="stylesheet" href="/static/styles.css?v=20260708-3">
   </head>
   <body>
     <header class="top-banner">
@@ -74,7 +74,7 @@
             <label class="upload-zone" for="excelInput">
               <input type="file" id="excelInput" accept=".xlsx" hidden>
               <strong>请上传风险应对报告清单</strong>
-              <span>支持 .xlsx 格式，系统将读取首个工作表中的“情况说明”字段</span>
+              <span>支持 .xlsx 格式，系统将读取“情况说明”，并提取“疑点信息”“人工判断”等参考字段</span>
             </label>
             <div class="mt-3">
               <button class="btn btn-primary" id="parseBtn">
@@ -97,6 +97,8 @@
                     <th style="width: 170px;">报告编号</th>
                     <th style="width: 220px;">纳税人名称</th>
                     <th>风险任务名称</th>
+                    <th style="width: 260px;">疑点信息</th>
+                    <th style="width: 100px;">人工判断</th>
                     <th style="width: 120px;">正文长度</th>
                     <th style="width: 110px;">复核状态</th>
                     <th style="width: 110px;">操作</th>
@@ -112,12 +114,13 @@
               <h3 class="sub-heading" id="selectedReportTitle">报告正文预览</h3>
               <button class="btn btn-outline-secondary btn-sm" id="backToListBtn">重新选择报告</button>
             </div>
+            <div id="selectedReportMeta" class="mb-3"></div>
 
             <div class="accordion mb-3" id="reportPreviewAccordion">
               <div class="accordion-item">
                 <h2 class="accordion-header">
                   <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#reportPreviewCollapse">
-                    查看完整正文
+                    查看完整情况说明
                   </button>
                 </h2>
                 <div id="reportPreviewCollapse" class="accordion-collapse collapse">
@@ -163,6 +166,6 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="/static/app.js"></script>
+    <script src="/static/app.js?v=20260708-3"></script>
   </body>
 </html>

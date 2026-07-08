@@ -394,6 +394,11 @@ body {
   grid-column: 1 / -1;
 }
 
+.info-card-summary {
+  background: #f8fbfd;
+  border-left: 4px solid var(--gov-blue);
+}
+
 .upload-zone {
   display: flex;
   min-height: 150px;
@@ -435,6 +440,35 @@ body {
   line-height: 1.8;
 }
 
+.record-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.record-meta-item {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #fbfcfe;
+  padding: 10px 12px;
+  min-width: 0;
+}
+
+.record-meta-label {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  margin-bottom: 5px;
+}
+
+.record-meta-value {
+  display: block;
+  color: #263746;
+  font-size: 14px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
 .review-result {
   border-top: 1px solid var(--line);
   padding-top: 22px;
@@ -465,8 +499,16 @@ body {
   border-left: 4px solid var(--gov-blue);
 }
 
+.source-record-panel {
+  margin-bottom: 20px;
+}
+
+.source-record-panel h3 {
+  margin-top: 0;
+}
+
 .table {
-  min-width: 920px;
+  min-width: 1180px;
 }
 
 .table thead th {
@@ -513,6 +555,7 @@ body {
   }
 
   .loading-context,
+  .record-meta-grid,
   .stage-list {
     grid-template-columns: 1fr;
   }

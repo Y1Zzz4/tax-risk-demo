@@ -206,18 +206,22 @@ function renderList(parent, items) {
 function renderChatResult(data) {
   const container = $("chatResult");
   container.innerHTML = "";
+  const answerSummary = data.answer_summary || data.question_understanding || "未返回明确总结";
+  const referenceMaterials = data.reference_materials || data.supplementary_materials;
 
   const cards = [
+    ["回答总结", answerSummary, "summary"],
     ["问题理解", data.question_understanding, "text"],
     ["建议核查方向", data.verification_directions, "list"],
     ["建议应对措施", data.suggested_measures, "list"],
-    ["建议补充材料", data.supplementary_materials, "list"],
+    ["参考材料", referenceMaterials, "list"],
     ["风险提示", data.risk_notice, "text-wide"],
   ];
 
   cards.forEach(([title, content, type]) => {
     const card = document.createElement("article");
-    card.className = type === "text-wide" ? "info-card info-card-wide" : "info-card";
+    card.className = type === "text-wide" || type === "summary" ? "info-card info-card-wide" : "info-card";
+    if (type === "summary") card.classList.add("info-card-summary");
     appendTextElement(card, "h3", title);
     if (type === "list") {
       renderList(card, content);
@@ -327,6 +331,53 @@ function resetChat() {
   $("chatResult").classList.add("d-none");
 }
 
+function formatShortText(value, maxLength = 60) {
+  const text = value || "未提供";
+  return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text;
+}
+
+function getRiskBrief(report) {
+  return report.risk_brief || "未提供";
+}
+
+function getManualHasIssue(report) {
+  return report.manual_has_issue || "未提供";
+}
+
+function getRectificationStatus(report) {
+  return report.rectification_status || "未提供";
+}
+
+function getReportMetaItems(report) {
+  return [
+    ["报告编号", getReportId(report)],
+    ["纳税人名称", getTaxpayerName(report)],
+    ["风险任务名称", getTaskName(report)],
+    ["疑点信息", getRiskBrief(report)],
+    ["人工判断", getManualHasIssue(report)],
+    ["申报更正情况", getRectificationStatus(report)],
+  ];
+}
+
+function appendReportMetaGrid(parent, report) {
+  const grid = document.createElement("div");
+  grid.className = "record-meta-grid";
+  getReportMetaItems(report).forEach(([label, value]) => {
+    const item = document.createElement("div");
+    item.className = "record-meta-item";
+    appendTextElement(item, "span", label, "record-meta-label");
+    appendTextElement(item, "span", value, "record-meta-value");
+    grid.appendChild(item);
+  });
+  parent.appendChild(grid);
+}
+
+function renderSelectedReportMeta(report) {
+  const container = $("selectedReportMeta");
+  container.innerHTML = "";
+  appendReportMetaGrid(container, report);
+}
+
 function renderReportList(reports) {
   const tbody = $("reportListBody");
   tbody.innerHTML = "";
@@ -335,6 +386,9 @@ function renderReportList(reports) {
     appendTextElement(tr, "td", getReportId(report));
     appendTextElement(tr, "td", getTaxpayerName(report));
     appendTextElement(tr, "td", getTaskName(report));
+    const riskTd = appendTextElement(tr, "td", formatShortText(getRiskBrief(report)));
+    riskTd.title = getRiskBrief(report);
+    appendTextElement(tr, "td", getManualHasIssue(report));
     appendTextElement(tr, "td", String(report.text_length));
     const statusTd = document.createElement("td");
     const cached = Boolean(state.reviewCache[getReportKey(report)]);
@@ -383,6 +437,8 @@ async function handleParseReport() {
       body: formData,
     });
     state.reports = data.reports || [];
+    state.selectedReport = null;
+    state.lastReviewText = "";
     state.reviewCache = {};
     renderReportList(state.reports);
     $("uploadStage").classList.add("d-none");
@@ -403,6 +459,7 @@ function selectReport(index) {
   state.selectedReport = state.reports[index];
   state.lastReviewText = "";
   $("selectedReportTitle").textContent = `报告正文预览：${getTaxpayerName(state.selectedReport)}`;
+  renderSelectedReportMeta(state.selectedReport);
   $("reportPreview").textContent = state.selectedReport.full_text;
   $("reviewResult").innerHTML = "";
   $("reviewResult").classList.add("d-none");
@@ -429,6 +486,7 @@ function resetUpload() {
   $("excelInput").value = "";
   $("selectedFileName").textContent = "未选择文件";
   $("reportListBody").innerHTML = "";
+  $("selectedReportMeta").innerHTML = "";
   clearLoadingPanel("reviewLoadingPanel");
   $("uploadStage").classList.remove("d-none");
   $("selectStage").classList.add("d-none");
@@ -472,6 +530,15 @@ function appendBullets(parent, title, items) {
   renderList(parent, items);
 }
 
+function appendOriginalReportInfo(parent, report) {
+  if (!report) return;
+  const panel = document.createElement("section");
+  panel.className = "source-record-panel";
+  appendTextElement(panel, "h3", "原报告信息对照");
+  appendReportMetaGrid(panel, report);
+  parent.appendChild(panel);
+}
+
 function renderReviewResult(data, options = {}) {
   const container = $("reviewResult");
   container.innerHTML = "";
@@ -480,6 +547,7 @@ function renderReviewResult(data, options = {}) {
     appendTextElement(container, "div", "已展示本次页面会话中生成的复核结果。如需重新调用模型，请点击“重新复核”。", "cache-notice");
   }
 
+  appendOriginalReportInfo(container, state.selectedReport);
   appendTextElement(container, "div", `报告分析对象：${data.report_object}`, "object-title");
 
   appendSection(container, "一、报告摘要");
@@ -488,7 +556,7 @@ function renderReviewResult(data, options = {}) {
   appendSection(container, "二、报告结构分析");
   appendTable(
     container,
-    ["标题规范表述", "实际表述", "是否匹配"],
+    ["标题规范表述", "实际表述", "语义匹配情况"],
     data.structure_analysis.rows || [],
     ["standard_title", "actual_expression", "match_status"],
   );
@@ -510,7 +578,7 @@ function renderReviewResult(data, options = {}) {
   appendSection(container, "五、应对结论检查");
   appendTable(
     container,
-    ["风险点", "处理措施", "是否匹配"],
+    ["风险点", "处理措施", "语义匹配情况"],
     data.response_conclusion_check.rows || [],
     ["risk_point", "treatment_measure", "match_status"],
   );
@@ -548,15 +616,28 @@ function listToText(items) {
   return (items || []).map((item) => `- ${item}`).join("\n");
 }
 
-function formatReviewPlainText(data) {
+function formatOriginalReportPlainText(report) {
+  if (!report) return "";
   return [
+    "原报告信息对照",
+    ...getReportMetaItems(report).map(([label, value]) => `${label}：${value}`),
+  ].join("\n");
+}
+
+function formatReviewPlainText(data) {
+  const lines = [];
+  const originalReportText = formatOriginalReportPlainText(state.selectedReport);
+  if (originalReportText) {
+    lines.push(originalReportText, "");
+  }
+  lines.push(
     `报告分析对象：${data.report_object}`,
     "",
     "一、报告摘要",
     data.report_summary,
     "",
     "二、报告结构分析",
-    tableToText(["标题规范表述", "实际表述", "是否匹配"], data.structure_analysis.rows || [], ["standard_title", "actual_expression", "match_status"]),
+    tableToText(["标题规范表述", "实际表述", "语义匹配情况"], data.structure_analysis.rows || [], ["standard_title", "actual_expression", "match_status"]),
     `说明：${data.structure_analysis.note}`,
     "",
     "三、关键字检查",
@@ -568,7 +649,7 @@ function formatReviewPlainText(data) {
     `结论：${data.response_completeness_check.conclusion}`,
     "",
     "五、应对结论检查",
-    tableToText(["风险点", "处理措施", "是否匹配"], data.response_conclusion_check.rows || [], ["risk_point", "treatment_measure", "match_status"]),
+    tableToText(["风险点", "处理措施", "语义匹配情况"], data.response_conclusion_check.rows || [], ["risk_point", "treatment_measure", "match_status"]),
     `说明：${data.response_conclusion_check.note}`,
     `提示：${data.response_conclusion_check.tip}`,
     `结论：${data.response_conclusion_check.conclusion}`,
@@ -589,7 +670,8 @@ function formatReviewPlainText(data) {
     "",
     "最终复核意见",
     data.final_review_opinion,
-  ].join("\n");
+  );
+  return lines.join("\n");
 }
 
 async function handleReview() {
@@ -607,11 +689,12 @@ async function handleReview() {
     context: [
       { label: "复核对象", value: getTaxpayerName(state.selectedReport) },
       { label: "报告编号", value: getReportId(state.selectedReport) },
+      { label: "人工判断", value: getManualHasIssue(state.selectedReport) },
       { label: "正文长度", value: `${state.selectedReport.text_length} 字` },
     ],
     estimatedTime: "通常 20-60 秒",
     stages: ["确认报告正文", "提交复核任务", "分析结构与完整性", "生成复核意见"],
-    note: "复核仅依据当前报告正文进行，不进行政策库、案例库、企业外部数据或关键字规则库检索。",
+    note: "复核依据当前报告正文及上传表中的疑点、人工判断等字段进行，不进行政策库、案例库、企业外部数据或关键字规则库检索。",
     stageDurationMs: 7000,
     abort: {
       label: "中止本次复核",
@@ -622,7 +705,15 @@ async function handleReview() {
     const data = await fetchJson("/api/report/review", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ report_text: state.selectedReport.full_text }),
+      body: JSON.stringify({
+        report_text: state.selectedReport.full_text,
+        record_id: state.selectedReport.record_id,
+        taxpayer_name: state.selectedReport.taxpayer_name,
+        task_name: state.selectedReport.task_name,
+        risk_brief: state.selectedReport.risk_brief,
+        manual_has_issue: state.selectedReport.manual_has_issue,
+        rectification_status: state.selectedReport.rectification_status,
+      }),
       signal: reviewController.signal,
     });
     clearLoadingPanel("reviewLoadingPanel");

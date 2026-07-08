@@ -6,7 +6,16 @@ from fastapi import HTTPException, UploadFile
 from app.schemas import ParsedReportItem, ReportParseResponse
 
 
-QKSM_MISSING_MESSAGE = "未识别到“情况说明”字段，请确认上传文件是否包含 qksm 列。"
+REPORT_TEXT_MISSING_MESSAGE = "未识别到“情况说明”字段，请确认上传文件是否包含该列。"
+MANUAL_HAS_ISSUE_VALUES = {"有问题", "无问题"}
+
+
+def _find_column(normalized_columns: dict[str, object], aliases: tuple[str, ...]) -> object | None:
+    for alias in aliases:
+        column = normalized_columns.get(alias.strip().lower())
+        if column is not None:
+            return column
+    return None
 
 
 def _get_text(row: pd.Series, column: object | None) -> str | None:
@@ -17,6 +26,15 @@ def _get_text(row: pd.Series, column: object | None) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def _get_manual_has_issue(row: pd.Series, column: object | None) -> str | None:
+    text = _get_text(row, column)
+    if text is None:
+        return None
+    if text in MANUAL_HAS_ISSUE_VALUES:
+        return text
+    raise HTTPException(status_code=400, detail="“人工判断”字段仅支持“有问题”或“无问题”。")
 
 
 async def parse_report_excel(file: UploadFile) -> ReportParseResponse:
@@ -34,15 +52,18 @@ async def parse_report_excel(file: UploadFile) -> ReportParseResponse:
         raise HTTPException(status_code=400, detail=f"Excel 解析失败，请确认文件格式正确：{exc}") from exc
 
     normalized_columns = {str(col).strip().lower(): col for col in df.columns}
-    qksm_column = normalized_columns.get("qksm")
-    if qksm_column is None:
-        raise HTTPException(status_code=400, detail=QKSM_MISSING_MESSAGE)
-    record_id_column = normalized_columns.get("djxh")
-    taxpayer_name_column = normalized_columns.get("nsrmc")
-    task_name_column = normalized_columns.get("fxrwmc")
+    report_text_column = _find_column(normalized_columns, ("情况说明",))
+    if report_text_column is None:
+        raise HTTPException(status_code=400, detail=REPORT_TEXT_MISSING_MESSAGE)
+    record_id_column = _find_column(normalized_columns, ("报告编号",))
+    taxpayer_name_column = _find_column(normalized_columns, ("纳税人名称",))
+    task_name_column = _find_column(normalized_columns, ("风险任务名称",))
+    risk_brief_column = _find_column(normalized_columns, ("疑点信息",))
+    manual_has_issue_column = _find_column(normalized_columns, ("人工判断",))
+    rectification_status_column = _find_column(normalized_columns, ("申报更正情况",))
 
     reports: list[ParsedReportItem] = []
-    for index, value in df[qksm_column].items():
+    for index, value in df[report_text_column].items():
         if pd.isna(value):
             continue
         text = str(value).strip()
@@ -54,6 +75,9 @@ async def parse_report_excel(file: UploadFile) -> ReportParseResponse:
                 record_id=_get_text(df.loc[index], record_id_column),
                 taxpayer_name=_get_text(df.loc[index], taxpayer_name_column),
                 task_name=_get_text(df.loc[index], task_name_column),
+                risk_brief=_get_text(df.loc[index], risk_brief_column),
+                manual_has_issue=_get_manual_has_issue(df.loc[index], manual_has_issue_column),
+                rectification_status=_get_text(df.loc[index], rectification_status_column),
                 preview=text[:120],
                 full_text=text,
                 text_length=len(text),

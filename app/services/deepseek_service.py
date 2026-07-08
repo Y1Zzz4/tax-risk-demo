@@ -97,12 +97,47 @@ class DeepSeekService:
             f"请基于以下问题生成辅助研判结果：\n\n{question}",
             temperature=0.35,
         )
-        return self._validate(self._load_json(content), ChatResponse)
+        parsed = self._load_json(content)
+        if "reference_materials" not in parsed and "supplementary_materials" in parsed:
+            parsed["reference_materials"] = parsed["supplementary_materials"]
+        if "answer_summary" not in parsed:
+            parsed["answer_summary"] = parsed.get("question_understanding", "")
+        return self._validate(parsed, ChatResponse)
 
-    def review_report(self, report_text: str) -> ReportReviewResponse:
+    @staticmethod
+    def _format_optional_context(fields: list[tuple[str, str | None]]) -> str:
+        lines = [f"{label}：{value.strip()}" for label, value in fields if value and value.strip()]
+        return "\n".join(lines) if lines else "未提供原表参考字段。"
+
+    def review_report(
+        self,
+        report_text: str,
+        *,
+        record_id: str | None = None,
+        taxpayer_name: str | None = None,
+        task_name: str | None = None,
+        risk_brief: str | None = None,
+        manual_has_issue: str | None = None,
+        rectification_status: str | None = None,
+    ) -> ReportReviewResponse:
+        source_context = self._format_optional_context(
+            [
+                ("报告编号", record_id),
+                ("纳税人名称", taxpayer_name),
+                ("风险任务名称", task_name),
+                ("疑点信息", risk_brief),
+                ("人工判断", manual_has_issue),
+                ("申报更正情况", rectification_status),
+            ]
+        )
         content = self._chat_json(
             REPORT_REVIEW_SYSTEM_PROMPT,
-            f"请复核以下风控核查报告正文，仅依据正文显式信息输出指定 JSON：\n\n{report_text}",
+            (
+                "请复核以下风控核查报告。原表参考字段用于理解风险事项和人工判断对照，"
+                "“情况说明”是复核主体。请仅依据这些输入输出指定 JSON。\n\n"
+                f"【原表参考字段】\n{source_context}\n\n"
+                f"【情况说明】\n{report_text}"
+            ),
             temperature=0.15,
         )
         result = self._validate(self._load_json(content), ReportReviewResponse)

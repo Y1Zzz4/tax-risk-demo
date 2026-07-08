@@ -39,4 +39,12 @@ async def parse_report(file: UploadFile = File(...)) -> ReportParseResponse:
 
 @app.post("/api/report/review", response_model=ReportReviewResponse)
 async def review_report(payload: ReportReviewRequest) -> ReportReviewResponse:
-    return deepseek_service.review_report(payload.report_text.strip())
+    return deepseek_service.review_report(
+        payload.report_text.strip(),
+        record_id=payload.record_id,
+        taxpayer_name=payload.taxpayer_name,
+        task_name=payload.task_name,
+        risk_brief=payload.risk_brief,
+        manual_has_issue=payload.manual_has_issue,
+        rectification_status=payload.rectification_status,
+    )
