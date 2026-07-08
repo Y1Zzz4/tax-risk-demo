@@ -45,6 +45,6 @@ async def review_report(payload: ReportReviewRequest) -> ReportReviewResponse:
         taxpayer_name=payload.taxpayer_name,
         task_name=payload.task_name,
         risk_brief=payload.risk_brief,
-        manual_has_issue=payload.manual_has_issue,
+        manual_conclusion=payload.manual_conclusion,
         rectification_status=payload.rectification_status,
     )

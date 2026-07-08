@@ -24,7 +24,7 @@ class ParsedReportItem(BaseModel):
     taxpayer_name: str | None = None
     task_name: str | None = None
     risk_brief: str | None = None
-    manual_has_issue: str | None = None
+    manual_conclusion: str | None = None
     rectification_status: str | None = None
     preview: str
     full_text: str
@@ -41,7 +41,7 @@ class ReportReviewRequest(BaseModel):
     taxpayer_name: str | None = None
     task_name: str | None = None
     risk_brief: str | None = None
-    manual_has_issue: str | None = None
+    manual_conclusion: str | None = None
     rectification_status: str | None = None
 
 
@@ -87,6 +87,14 @@ class ResponseConclusionCheck(BaseModel):
     conclusion: str
 
 
+class ManualConclusionSupportCheck(BaseModel):
+    manual_conclusion: Literal["有问题", "无问题", "未提供"]
+    support_status: Literal["支撑充分", "部分支撑", "支撑不足", "无法判断"]
+    evidence_summary: str
+    gap_analysis: str
+    conclusion: str
+
+
 class QualityEvaluation(BaseModel):
     overall_level: Literal["较完整", "基本完整", "待完善", "无法判断"]
     strengths: list[str]
@@ -106,6 +114,7 @@ class ReportReviewResponse(BaseModel):
     keyword_check: KeywordCheck
     response_completeness_check: ResponseCompletenessCheck
     response_conclusion_check: ResponseConclusionCheck
+    manual_conclusion_support_check: ManualConclusionSupportCheck
     quality_evaluation: QualityEvaluation
     review_summary: ReviewSummary
     final_review_opinion: str

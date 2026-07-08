@@ -117,7 +117,7 @@ class DeepSeekService:
         taxpayer_name: str | None = None,
         task_name: str | None = None,
         risk_brief: str | None = None,
-        manual_has_issue: str | None = None,
+        manual_conclusion: str | None = None,
         rectification_status: str | None = None,
     ) -> ReportReviewResponse:
         source_context = self._format_optional_context(
@@ -126,21 +126,30 @@ class DeepSeekService:
                 ("纳税人名称", taxpayer_name),
                 ("风险任务名称", task_name),
                 ("疑点信息", risk_brief),
-                ("人工判断", manual_has_issue),
+                ("人工认定结果", manual_conclusion),
                 ("申报更正情况", rectification_status),
             ]
         )
         content = self._chat_json(
             REPORT_REVIEW_SYSTEM_PROMPT,
             (
-                "请复核以下风控核查报告。原表参考字段用于理解风险事项和人工判断对照，"
+                "请复核以下风控核查报告。原表参考字段用于理解风险事项和工作人员人工认定结果，"
                 "“情况说明”是复核主体。请仅依据这些输入输出指定 JSON。\n\n"
                 f"【原表参考字段】\n{source_context}\n\n"
                 f"【情况说明】\n{report_text}"
             ),
             temperature=0.15,
         )
-        result = self._validate(self._load_json(content), ReportReviewResponse)
+        parsed = self._load_json(content)
+        if "manual_conclusion_support_check" not in parsed:
+            parsed["manual_conclusion_support_check"] = {
+                "manual_conclusion": manual_conclusion or "未提供",
+                "support_status": "无法判断",
+                "evidence_summary": "模型未返回人工认定结果支撑性检查。",
+                "gap_analysis": "建议人工复核情况说明是否充分支撑人工认定结果。",
+                "conclusion": "未发现对应结构化检查结果，建议人工复核。",
+            }
+        result = self._validate(parsed, ReportReviewResponse)
         result.keyword_check.status = "暂未启用"
         result.keyword_check.content = "当前演示版本暂未接入既有关键字检索指标与规则库，本项不作自动命中判定。"
         return result

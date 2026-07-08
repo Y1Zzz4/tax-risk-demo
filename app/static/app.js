@@ -340,8 +340,8 @@ function getRiskBrief(report) {
   return report.risk_brief || "未提供";
 }
 
-function getManualHasIssue(report) {
-  return report.manual_has_issue || "未提供";
+function getManualConclusion(report) {
+  return report.manual_conclusion || "未提供";
 }
 
 function getRectificationStatus(report) {
@@ -354,7 +354,7 @@ function getReportMetaItems(report) {
     ["纳税人名称", getTaxpayerName(report)],
     ["风险任务名称", getTaskName(report)],
     ["疑点信息", getRiskBrief(report)],
-    ["人工判断", getManualHasIssue(report)],
+    ["人工认定结果", getManualConclusion(report)],
     ["申报更正情况", getRectificationStatus(report)],
   ];
 }
@@ -378,6 +378,32 @@ function renderSelectedReportMeta(report) {
   appendReportMetaGrid(container, report);
 }
 
+function parseTaskNameParts(taskName) {
+  const pattern = /^(\d{4}年\d{2}月)(.+?)管理条线(第\d+批)(.+?税务局)(第\d+批)(.+?行业)风险任务$/;
+  const match = taskName.match(pattern);
+  if (!match) {
+    return {
+      main: formatShortText(taskName, 34),
+      meta: "完整任务名称见详情",
+    };
+  }
+  return {
+    main: `${match[1]} · ${match[2]} · ${match[6]}`,
+    meta: `${match[4]} · 管理条线${match[3]} / 市局${match[5]}`,
+  };
+}
+
+function appendTaskNameCell(row, report) {
+  const taskName = getTaskName(report);
+  const parts = parseTaskNameParts(taskName);
+  const td = document.createElement("td");
+  td.className = "task-name-cell";
+  td.title = taskName;
+  appendTextElement(td, "span", parts.main, "task-name-main");
+  appendTextElement(td, "span", parts.meta, "task-name-meta");
+  row.appendChild(td);
+}
+
 function renderReportList(reports) {
   const tbody = $("reportListBody");
   tbody.innerHTML = "";
@@ -385,10 +411,10 @@ function renderReportList(reports) {
     const tr = document.createElement("tr");
     appendTextElement(tr, "td", getReportId(report));
     appendTextElement(tr, "td", getTaxpayerName(report));
-    appendTextElement(tr, "td", getTaskName(report));
+    appendTaskNameCell(tr, report);
     const riskTd = appendTextElement(tr, "td", formatShortText(getRiskBrief(report)));
     riskTd.title = getRiskBrief(report);
-    appendTextElement(tr, "td", getManualHasIssue(report));
+    appendTextElement(tr, "td", getManualConclusion(report));
     appendTextElement(tr, "td", String(report.text_length));
     const statusTd = document.createElement("td");
     const cached = Boolean(state.reviewCache[getReportKey(report)]);
@@ -458,7 +484,7 @@ function selectReport(index) {
   }
   state.selectedReport = state.reports[index];
   state.lastReviewText = "";
-  $("selectedReportTitle").textContent = `报告正文预览：${getTaxpayerName(state.selectedReport)}`;
+  $("selectedReportTitle").textContent = `情况说明预览：${getTaxpayerName(state.selectedReport)}`;
   renderSelectedReportMeta(state.selectedReport);
   $("reportPreview").textContent = state.selectedReport.full_text;
   $("reviewResult").innerHTML = "";
@@ -534,8 +560,24 @@ function appendOriginalReportInfo(parent, report) {
   if (!report) return;
   const panel = document.createElement("section");
   panel.className = "source-record-panel";
-  appendTextElement(panel, "h3", "原报告信息对照");
+  appendTextElement(panel, "h3", "任务及人工处理信息");
   appendReportMetaGrid(panel, report);
+  parent.appendChild(panel);
+}
+
+function appendReviewTopSummary(parent, data) {
+  const panel = document.createElement("section");
+  panel.className = "review-summary-panel";
+  appendTextElement(panel, "h3", "复核结论摘要");
+  appendTextElement(panel, "p", data.final_review_opinion);
+  if (data.manual_conclusion_support_check) {
+    appendTextElement(
+      panel,
+      "p",
+      `人工认定结果支撑状态：${data.manual_conclusion_support_check.support_status}`,
+      "summary-status",
+    );
+  }
   parent.appendChild(panel);
 }
 
@@ -549,6 +591,7 @@ function renderReviewResult(data, options = {}) {
 
   appendOriginalReportInfo(container, state.selectedReport);
   appendTextElement(container, "div", `报告分析对象：${data.report_object}`, "object-title");
+  appendReviewTopSummary(container, data);
 
   appendSection(container, "一、报告摘要");
   appendTextElement(container, "p", data.report_summary);
@@ -586,13 +629,21 @@ function renderReviewResult(data, options = {}) {
   appendTextElement(container, "p", `提示：${data.response_conclusion_check.tip}`);
   appendTextElement(container, "p", `结论：${data.response_conclusion_check.conclusion}`);
 
-  appendSection(container, "六、应对质效评估");
+  appendSection(container, "六、人工认定结果支撑性检查");
+  appendTable(
+    container,
+    ["人工认定结果", "支撑状态", "支撑依据", "缺口分析", "结论"],
+    data.manual_conclusion_support_check ? [data.manual_conclusion_support_check] : [],
+    ["manual_conclusion", "support_status", "evidence_summary", "gap_analysis", "conclusion"],
+  );
+
+  appendSection(container, "七、应对质效评估");
   appendTextElement(container, "p", `总体评价：${data.quality_evaluation.overall_level}`);
   appendBullets(container, "已体现的优点", data.quality_evaluation.strengths);
   appendBullets(container, "待完善问题", data.quality_evaluation.deficiencies);
   appendBullets(container, "修改建议", data.quality_evaluation.improvement_suggestions);
 
-  appendSection(container, "七、复核情况总结");
+  appendSection(container, "八、复核情况总结");
   appendBullets(container, "具体情况", data.review_summary.specific_situation);
   appendTextElement(container, "p", `分析结论：${data.review_summary.analysis_conclusion}`);
 
@@ -619,7 +670,7 @@ function listToText(items) {
 function formatOriginalReportPlainText(report) {
   if (!report) return "";
   return [
-    "原报告信息对照",
+    "任务及人工处理信息",
     ...getReportMetaItems(report).map(([label, value]) => `${label}：${value}`),
   ].join("\n");
 }
@@ -627,11 +678,18 @@ function formatOriginalReportPlainText(report) {
 function formatReviewPlainText(data) {
   const lines = [];
   const originalReportText = formatOriginalReportPlainText(state.selectedReport);
+  const supportStatus = data.manual_conclusion_support_check
+    ? data.manual_conclusion_support_check.support_status
+    : "未返回";
   if (originalReportText) {
     lines.push(originalReportText, "");
   }
   lines.push(
     `报告分析对象：${data.report_object}`,
+    "",
+    "复核结论摘要",
+    data.final_review_opinion,
+    `人工认定结果支撑状态：${supportStatus}`,
     "",
     "一、报告摘要",
     data.report_summary,
@@ -654,7 +712,10 @@ function formatReviewPlainText(data) {
     `提示：${data.response_conclusion_check.tip}`,
     `结论：${data.response_conclusion_check.conclusion}`,
     "",
-    "六、应对质效评估",
+    "六、人工认定结果支撑性检查",
+    tableToText(["人工认定结果", "支撑状态", "支撑依据", "缺口分析", "结论"], data.manual_conclusion_support_check ? [data.manual_conclusion_support_check] : [], ["manual_conclusion", "support_status", "evidence_summary", "gap_analysis", "conclusion"]),
+    "",
+    "七、应对质效评估",
     `- 总体评价：${data.quality_evaluation.overall_level}`,
     "- 已体现的优点",
     listToText(data.quality_evaluation.strengths),
@@ -663,7 +724,7 @@ function formatReviewPlainText(data) {
     "- 修改建议",
     listToText(data.quality_evaluation.improvement_suggestions),
     "",
-    "七、复核情况总结",
+    "八、复核情况总结",
     "具体情况",
     listToText(data.review_summary.specific_situation),
     `分析结论：${data.review_summary.analysis_conclusion}`,
@@ -689,12 +750,12 @@ async function handleReview() {
     context: [
       { label: "复核对象", value: getTaxpayerName(state.selectedReport) },
       { label: "报告编号", value: getReportId(state.selectedReport) },
-      { label: "人工判断", value: getManualHasIssue(state.selectedReport) },
-      { label: "正文长度", value: `${state.selectedReport.text_length} 字` },
+      { label: "人工认定结果", value: getManualConclusion(state.selectedReport) },
+      { label: "情况说明长度", value: `${state.selectedReport.text_length} 字` },
     ],
     estimatedTime: "通常 20-60 秒",
     stages: ["确认报告正文", "提交复核任务", "分析结构与完整性", "生成复核意见"],
-    note: "复核依据当前报告正文及上传表中的疑点、人工判断等字段进行，不进行政策库、案例库、企业外部数据或关键字规则库检索。",
+    note: "复核依据当前情况说明及上传表中的疑点、人工认定结果等字段进行，不重新判定企业风险，不进行政策库、案例库、企业外部数据或关键字规则库检索。",
     stageDurationMs: 7000,
     abort: {
       label: "中止本次复核",
@@ -711,7 +772,7 @@ async function handleReview() {
         taxpayer_name: state.selectedReport.taxpayer_name,
         task_name: state.selectedReport.task_name,
         risk_brief: state.selectedReport.risk_brief,
-        manual_has_issue: state.selectedReport.manual_has_issue,
+        manual_conclusion: state.selectedReport.manual_conclusion,
         rectification_status: state.selectedReport.rectification_status,
       }),
       signal: reviewController.signal,

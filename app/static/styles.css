@@ -190,6 +190,30 @@ body {
   color: #22643c;
 }
 
+.task-name-cell {
+  min-width: 300px;
+  max-width: 360px;
+}
+
+.task-name-main,
+.task-name-meta {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.task-name-main {
+  color: #263746;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.task-name-meta {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 .cache-notice {
   margin-bottom: 16px;
   border: 1px solid #cfdbe6;
@@ -497,6 +521,29 @@ body {
   padding: 14px 16px;
   background: #eef3f7;
   border-left: 4px solid var(--gov-blue);
+}
+
+.review-summary-panel {
+  margin: 18px 0 20px;
+  border: 1px solid #cfdbe6;
+  border-left: 4px solid var(--gov-blue);
+  border-radius: 6px;
+  background: #f8fbfd;
+  padding: 14px 16px;
+}
+
+.review-summary-panel h3 {
+  margin: 0 0 10px;
+}
+
+.review-summary-panel p {
+  margin: 0;
+}
+
+.review-summary-panel .summary-status {
+  margin-top: 8px;
+  color: #52687d;
+  font-weight: 600;
 }
 
 .source-record-panel {
