@@ -317,6 +317,106 @@ body.menu-open .side-menu {
   color: var(--gov-blue-dark);
 }
 
+.workflow-panel,
+.risk-clue-workspace,
+.selected-risk-panel,
+.advice-records {
+  margin-bottom: 18px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fbfcfe;
+  padding: 16px;
+}
+
+.workflow-panel-header,
+.record-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.workflow-panel-header h3 {
+  margin: 0;
+  color: var(--gov-blue-dark);
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.workflow-panel-header span,
+.record-toolbar span {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.record-toolbar strong {
+  display: block;
+  color: var(--gov-blue-dark);
+}
+
+.selected-risk-panel,
+.advice-records {
+  margin-top: 16px;
+  margin-bottom: 0;
+  background: #fff;
+}
+
+.section-title-compact {
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+}
+
+.risk-company-table,
+.risk-clue-table {
+  min-width: 860px;
+}
+
+.risk-clue-table td {
+  overflow-wrap: anywhere;
+}
+
+.advice-record-list {
+  display: grid;
+  gap: 10px;
+}
+
+.advice-record-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fbfcfe;
+  padding: 12px;
+}
+
+.advice-record-item strong,
+.advice-record-item span {
+  display: block;
+}
+
+.advice-record-item span {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.advice-record-item p {
+  margin: 6px 0 0;
+  color: #31455a;
+  line-height: 1.6;
+}
+
+.advice-record-actions {
+  display: flex;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
 .status-badge {
   display: inline-flex;
   align-items: center;
@@ -598,6 +698,10 @@ body.menu-open .side-menu {
   font-size: 14px;
 }
 
+.upload-zone-compact {
+  min-height: 112px;
+}
+
 .file-name {
   margin-left: 12px;
 }
@@ -837,6 +941,14 @@ body.menu-open .side-menu {
 
   .content-panel {
     padding: 20px;
+  }
+
+  .workflow-panel-header,
+  .record-toolbar,
+  .advice-record-item,
+  .advice-record-actions {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .result-grid {

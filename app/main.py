@@ -7,15 +7,18 @@ from app.config import get_settings
 from app.schemas import (
     ChatRequest,
     ChatResponse,
+    CompanyRiskAdviceRequest,
     KnowledgeSearchRequest,
     KnowledgeSearchResponse,
     ReportParseResponse,
     ReportReviewRequest,
     ReportReviewResponse,
+    RiskClueParseResponse,
 )
 from app.services.deepseek_service import DeepSeekService
 from app.services.excel_service import parse_report_excel
 from app.services.knowledge_service import KnowledgeCategory, search_knowledge
+from app.services.risk_clue_service import parse_risk_clue_excel
 
 
 settings = get_settings()
@@ -79,6 +82,20 @@ async def health() -> dict[str, str]:
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat(payload: ChatRequest) -> ChatResponse:
     return deepseek_service.answer_question(payload.question.strip())
+
+
+@app.post("/api/risk-clues/parse", response_model=RiskClueParseResponse)
+async def parse_risk_clues(file: UploadFile = File(...)) -> RiskClueParseResponse:
+    return await parse_risk_clue_excel(file)
+
+
+@app.post("/api/risk-clues/advice", response_model=ChatResponse)
+async def advise_company_risk(payload: CompanyRiskAdviceRequest) -> ChatResponse:
+    return deepseek_service.answer_company_risk(
+        payload.taxpayer_name.strip(),
+        payload.risk_clues,
+        question=payload.question.strip(),
+    )
 
 
 @app.post("/api/report/parse", response_model=ReportParseResponse)

@@ -18,6 +18,27 @@ class ChatResponse(BaseModel):
     risk_notice: str
 
 
+class RiskClueItem(BaseModel):
+    row_index: int
+    sequence_no: str
+    taxpayer_name: str
+    risk_name: str
+    risk_period: str
+    risk_description: str
+
+
+class RiskClueParseResponse(BaseModel):
+    clues: list[RiskClueItem]
+    total_count: int
+    company_count: int
+
+
+class CompanyRiskAdviceRequest(BaseModel):
+    taxpayer_name: str = Field(..., min_length=1, max_length=300)
+    risk_clues: list[RiskClueItem] = Field(..., min_length=1)
+    question: str = Field("", max_length=4000)
+
+
 class ParsedReportItem(BaseModel):
     row_index: int
     record_id: str | None = None

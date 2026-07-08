@@ -6,6 +6,9 @@ const state = {
   chatHistory: [],
   reviewCache: {},
   activeRequests: {},
+  riskClues: [],
+  selectedRiskCompany: null,
+  companyAdviceRecords: {},
 };
 
 const $ = (id) => document.getElementById(id);
@@ -234,6 +237,248 @@ function renderChatResult(data) {
   container.classList.remove("d-none");
 }
 
+function groupRiskCluesByCompany() {
+  return state.riskClues.reduce((groups, clue) => {
+    const key = clue.taxpayer_name || "未识别纳税人名称";
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(clue);
+    return groups;
+  }, {});
+}
+
+function getRiskCluesForCompany(companyName) {
+  return state.riskClues.filter((clue) => clue.taxpayer_name === companyName);
+}
+
+function getCompanyAdviceRecords(companyName) {
+  return state.companyAdviceRecords[companyName] || [];
+}
+
+function formatRiskPeriods(clues) {
+  const periods = [...new Set(clues.map((clue) => clue.risk_period).filter(Boolean))];
+  return periods.length ? periods.slice(0, 3).join("、") + (periods.length > 3 ? " 等" : "") : "未提供";
+}
+
+function renderRiskCompanyList() {
+  const tbody = $("riskCompanyListBody");
+  if (!tbody) return;
+  tbody.innerHTML = "";
+  const groups = groupRiskCluesByCompany();
+  Object.entries(groups).forEach(([companyName, clues]) => {
+    const row = document.createElement("tr");
+    if (state.selectedRiskCompany === companyName) row.classList.add("table-active");
+    appendTextElement(row, "td", companyName);
+    appendTextElement(row, "td", String(clues.length));
+    appendTextElement(row, "td", formatRiskPeriods(clues));
+    appendTextElement(row, "td", `${getCompanyAdviceRecords(companyName).length} 条`);
+    const actionCell = document.createElement("td");
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "btn btn-sm btn-outline-primary";
+    button.textContent = "查看";
+    button.addEventListener("click", () => selectRiskCompany(companyName));
+    actionCell.appendChild(button);
+    row.appendChild(actionCell);
+    tbody.appendChild(row);
+  });
+}
+
+function renderSelectedRiskClues(companyName) {
+  const clues = getRiskCluesForCompany(companyName);
+  $("selectedRiskCompanyTitle").textContent = `企业风险点：${companyName}`;
+  $("selectedRiskCompanyMeta").textContent = `${clues.length} 条下发疑点`;
+  const tbody = $("selectedRiskClueBody");
+  tbody.innerHTML = "";
+  clues.forEach((clue) => {
+    const row = document.createElement("tr");
+    appendTextElement(row, "td", clue.sequence_no);
+    appendTextElement(row, "td", clue.taxpayer_name);
+    appendTextElement(row, "td", clue.risk_name);
+    appendTextElement(row, "td", clue.risk_period);
+    appendTextElement(row, "td", clue.risk_description);
+    tbody.appendChild(row);
+  });
+  $("selectedRiskCompanyPanel").classList.remove("d-none");
+}
+
+function selectRiskCompany(companyName) {
+  state.selectedRiskCompany = companyName;
+  renderRiskCompanyList();
+  renderSelectedRiskClues(companyName);
+  renderAdviceRecords(companyName);
+  $("chatResult").innerHTML = "";
+  $("chatResult").classList.add("d-none");
+  $("questionInput").focus();
+}
+
+function resetRiskClues() {
+  state.riskClues = [];
+  state.selectedRiskCompany = null;
+  state.companyAdviceRecords = {};
+  $("riskClueInput").value = "";
+  $("riskClueFileName").textContent = "未选择文件";
+  $("riskClueWorkspace").classList.add("d-none");
+  $("selectedRiskCompanyPanel").classList.add("d-none");
+  $("riskClueResetBtn").classList.add("d-none");
+  $("riskCompanyListBody").innerHTML = "";
+  $("companyAdviceRecordsList").innerHTML = "";
+  $("companyAdviceRecordsPanel").classList.add("d-none");
+}
+
+async function handleParseRiskClues() {
+  const file = $("riskClueInput").files[0];
+  if (!file) {
+    showToast("请先选择 .xlsx 下发疑点清单。");
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append("file", file);
+  setLoading($("riskClueParseBtn"), $("riskClueParseSpinner"), true);
+  try {
+    const data = await fetchJson("/api/risk-clues/parse", {
+      method: "POST",
+      body: formData,
+    });
+    state.riskClues = data.clues || [];
+    state.selectedRiskCompany = null;
+    state.companyAdviceRecords = {};
+    $("riskClueSummary").textContent = `已解析 ${data.total_count} 条风险点，涉及 ${data.company_count} 户企业`;
+    $("riskClueWorkspace").classList.remove("d-none");
+    $("selectedRiskCompanyPanel").classList.add("d-none");
+    $("riskClueResetBtn").classList.remove("d-none");
+    renderRiskCompanyList();
+    clearLoadingPanel("chatLoadingPanel");
+    $("chatResult").innerHTML = "";
+    $("chatResult").classList.add("d-none");
+    showToast("下发疑点清单解析完成。", "success");
+  } catch (error) {
+    showToast(error.message);
+  } finally {
+    setLoading($("riskClueParseBtn"), $("riskClueParseSpinner"), false);
+  }
+}
+
+function createAdviceRecord(result, question) {
+  const now = new Date();
+  return {
+    id: `${now.getTime()}`,
+    created_at: now.toLocaleString("zh-CN", { hour12: false }),
+    taxpayer_name: state.selectedRiskCompany,
+    question: question || "根据上传下发疑点清单生成企业风险应对建议",
+    risk_clues: getRiskCluesForCompany(state.selectedRiskCompany),
+    result,
+  };
+}
+
+function saveAdviceRecord(record) {
+  if (!state.companyAdviceRecords[record.taxpayer_name]) {
+    state.companyAdviceRecords[record.taxpayer_name] = [];
+  }
+  state.companyAdviceRecords[record.taxpayer_name] = [record, ...state.companyAdviceRecords[record.taxpayer_name]].slice(0, 20);
+}
+
+function renderAdviceRecords(companyName) {
+  const panel = $("companyAdviceRecordsPanel");
+  const list = $("companyAdviceRecordsList");
+  if (!panel || !list) return;
+  const records = getCompanyAdviceRecords(companyName);
+  list.innerHTML = "";
+  if (!records.length) {
+    panel.classList.add("d-none");
+    return;
+  }
+
+  records.forEach((record, index) => {
+    const item = document.createElement("article");
+    item.className = "advice-record-item";
+    const info = document.createElement("div");
+    appendTextElement(info, "strong", `建议记录 ${records.length - index}`);
+    appendTextElement(info, "span", `${record.created_at} · ${record.risk_clues.length} 条风险点`);
+    appendTextElement(info, "p", record.question);
+    const actions = document.createElement("div");
+    actions.className = "advice-record-actions";
+    const viewButton = document.createElement("button");
+    viewButton.type = "button";
+    viewButton.className = "btn btn-sm btn-outline-primary";
+    viewButton.textContent = "在线查看";
+    viewButton.addEventListener("click", () => viewAdviceRecord(record));
+    const downloadButton = document.createElement("button");
+    downloadButton.type = "button";
+    downloadButton.className = "btn btn-sm btn-outline-secondary";
+    downloadButton.textContent = "保存文件";
+    downloadButton.addEventListener("click", () => downloadAdviceRecord(record));
+    actions.appendChild(viewButton);
+    actions.appendChild(downloadButton);
+    item.appendChild(info);
+    item.appendChild(actions);
+    list.appendChild(item);
+  });
+  panel.classList.remove("d-none");
+}
+
+function viewAdviceRecord(record) {
+  state.selectedRiskCompany = record.taxpayer_name;
+  renderSelectedRiskClues(record.taxpayer_name);
+  renderChatResult(record.result);
+  $("questionInput").value = record.question;
+  $("chatResult").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function sanitizeFilename(value) {
+  return (value || "企业").replace(/[\\/:*?"<>|]/g, "_").slice(0, 80);
+}
+
+function formatRiskCluesPlainText(clues) {
+  const lines = ["| 序号 | 纳税人名称 | 疑点名称 | 风险所属期 | 风险描述 |", "| --- | --- | --- | --- | --- |"];
+  clues.forEach((clue) => {
+    lines.push(`| ${clue.sequence_no} | ${clue.taxpayer_name} | ${clue.risk_name} | ${clue.risk_period} | ${clue.risk_description} |`);
+  });
+  return lines.join("\n");
+}
+
+function formatAdviceRecordPlainText(record) {
+  const result = record.result;
+  return [
+    `纳税人名称：${record.taxpayer_name}`,
+    `生成时间：${record.created_at}`,
+    `分析要求：${record.question}`,
+    "",
+    "下发疑点清单",
+    formatRiskCluesPlainText(record.risk_clues),
+    "",
+    "回答总结",
+    result.answer_summary || "",
+    "",
+    "问题理解",
+    result.question_understanding || "",
+    "",
+    "建议核查方向",
+    listToText(result.verification_directions),
+    "",
+    "建议应对措施",
+    listToText(result.suggested_measures),
+    "",
+    "参考材料",
+    listToText(result.reference_materials || result.supplementary_materials),
+    "",
+    "风险提示",
+    result.risk_notice || "",
+  ].join("\n");
+}
+
+function downloadAdviceRecord(record) {
+  const blob = new Blob([formatAdviceRecordPlainText(record)], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${sanitizeFilename(record.taxpayer_name)}_风险应对建议_${record.id}.txt`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 const knowledgeSearchConfig = {
   policies: {
     inputId: "policySearchInput",
@@ -362,7 +607,9 @@ function clearChatHistory() {
 
 async function handleChatSubmit() {
   const question = $("questionInput").value.trim();
-  if (!question) {
+  const selectedCompany = state.selectedRiskCompany;
+  const selectedRiskClues = selectedCompany ? getRiskCluesForCompany(selectedCompany) : [];
+  if (!question && !selectedCompany) {
     showToast("请输入需要分析的问题。");
     return;
   }
@@ -371,30 +618,47 @@ async function handleChatSubmit() {
   $("chatResult").classList.add("d-none");
   const chatController = new AbortController();
   state.activeRequests.chat = chatController;
+  const isCompanyRiskAdvice = Boolean(selectedCompany && selectedRiskClues.length);
   startLoadingPanel("chatLoadingPanel", {
     title: "智能应对任务处理中",
     context: [
-      { label: "任务类型", value: "风险核查辅助研判" },
-      { label: "输入长度", value: `${question.length} 字` },
+      { label: "任务类型", value: isCompanyRiskAdvice ? "企业风险点应对建议" : "风险核查辅助研判" },
+      { label: "分析对象", value: selectedCompany || "自由提问" },
+      { label: "风险点数量", value: isCompanyRiskAdvice ? `${selectedRiskClues.length} 条` : "未上传清单" },
     ],
     estimatedTime: "通常 10-40 秒",
-    stages: ["提交问题", "调用大模型生成辅助研判", "整理结构化结果", "等待结果返回"],
-    note: "当前服务仅调用大模型生成一般性研判框架，不自动检索政策法规、历史案例或内部数据。",
+    stages: ["确认输入", "调用大模型生成辅助研判", "整理结构化结果", "等待结果返回"],
+    note: isCompanyRiskAdvice
+      ? "当前任务基于已上传的企业下发疑点清单生成辅助应对建议，不自动检索政策法规、历史案例或内部数据。"
+      : "当前服务仅调用大模型生成一般性研判框架，不自动检索政策法规、历史案例或内部数据。",
     abort: {
       label: "中止本次分析",
       onClick: () => abortActiveRequest("chat", "chatLoadingPanel", "智能应对任务已中止"),
     },
   });
   try {
-    const data = await fetchJson("/api/chat", {
+    const data = await fetchJson(isCompanyRiskAdvice ? "/api/risk-clues/advice" : "/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question }),
+      body: JSON.stringify(
+        isCompanyRiskAdvice
+          ? { taxpayer_name: selectedCompany, risk_clues: selectedRiskClues, question }
+          : { question },
+      ),
       signal: chatController.signal,
     });
     clearLoadingPanel("chatLoadingPanel");
     renderChatResult(data);
-    addChatHistory(question);
+    if (isCompanyRiskAdvice) {
+      const record = createAdviceRecord(data, question);
+      saveAdviceRecord(record);
+      renderAdviceRecords(selectedCompany);
+      renderRiskCompanyList();
+      addChatHistory(`${selectedCompany}：${question || "根据上传疑点清单生成应对建议"}`);
+      showToast("企业风险应对建议已生成并保存到本次会话记录。", "success");
+    } else {
+      addChatHistory(question);
+    }
   } catch (error) {
     if (error.name === "AbortError") return;
     showLoadingError("chatLoadingPanel", "智能应对任务未完成", error.message);
@@ -920,6 +1184,12 @@ function bindEvents() {
   bindIfExists("chatSubmitBtn", "click", handleChatSubmit);
   bindIfExists("chatClearBtn", "click", resetChat);
   bindIfExists("chatClearHistoryBtn", "click", clearChatHistory);
+  bindIfExists("riskClueParseBtn", "click", handleParseRiskClues);
+  bindIfExists("riskClueResetBtn", "click", resetRiskClues);
+  bindIfExists("riskClueInput", "change", () => {
+    const file = $("riskClueInput").files[0];
+    $("riskClueFileName").textContent = file ? file.name : "未选择文件";
+  });
   bindIfExists("policySearchBtn", "click", () => handleKnowledgeSearch("policies"));
   bindIfExists("caseSearchBtn", "click", () => handleKnowledgeSearch("cases"));
   bindIfExists("policySearchInput", "keydown", (event) => {

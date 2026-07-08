@@ -7,8 +7,8 @@ from openai import APIConnectionError, APIError, APITimeoutError, OpenAI
 from pydantic import BaseModel, ValidationError
 
 from app.config import get_settings
-from app.prompts import CHAT_SYSTEM_PROMPT, REPORT_REVIEW_SYSTEM_PROMPT
-from app.schemas import ChatResponse, ReportReviewResponse
+from app.prompts import CHAT_SYSTEM_PROMPT, COMPANY_RISK_ADVICE_SYSTEM_PROMPT, REPORT_REVIEW_SYSTEM_PROMPT
+from app.schemas import ChatResponse, ReportReviewResponse, RiskClueItem
 
 
 T = TypeVar("T", bound=BaseModel)
@@ -96,6 +96,42 @@ class DeepSeekService:
             CHAT_SYSTEM_PROMPT,
             f"请基于以下问题生成辅助研判结果：\n\n{question}",
             temperature=0.35,
+        )
+        parsed = self._load_json(content)
+        if "reference_materials" not in parsed and "supplementary_materials" in parsed:
+            parsed["reference_materials"] = parsed["supplementary_materials"]
+        if "answer_summary" not in parsed:
+            parsed["answer_summary"] = parsed.get("question_understanding", "")
+        return self._validate(parsed, ChatResponse)
+
+    @staticmethod
+    def _format_risk_clues(risk_clues: list[RiskClueItem]) -> str:
+        lines = []
+        for item in risk_clues:
+            lines.append(
+                "；".join(
+                    [
+                        f"序号：{item.sequence_no}",
+                        f"纳税人名称：{item.taxpayer_name}",
+                        f"疑点名称：{item.risk_name}",
+                        f"风险所属期：{item.risk_period}",
+                        f"风险描述：{item.risk_description}",
+                    ]
+                )
+            )
+        return "\n".join(lines)
+
+    def answer_company_risk(self, taxpayer_name: str, risk_clues: list[RiskClueItem], *, question: str = "") -> ChatResponse:
+        risk_clue_text = self._format_risk_clues(risk_clues)
+        user_requirement = question or "请根据该企业下发疑点清单，辅助税务人员形成风险应对建议。"
+        content = self._chat_json(
+            COMPANY_RISK_ADVICE_SYSTEM_PROMPT,
+            (
+                f"【纳税人名称】\n{taxpayer_name}\n\n"
+                f"【下发疑点清单】\n{risk_clue_text}\n\n"
+                f"【用户补充要求】\n{user_requirement}"
+            ),
+            temperature=0.25,
         )
         parsed = self._load_json(content)
         if "reference_materials" not in parsed and "supplementary_materials" in parsed:
