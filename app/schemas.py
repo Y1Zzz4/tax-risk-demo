@@ -66,6 +66,36 @@ class ReportReviewRequest(BaseModel):
     rectification_status: str | None = None
 
 
+class WordRiskPoint(BaseModel):
+    index: int
+    title: str
+    description: str | None = None
+    verification: str | None = None
+    policy_basis: str | None = None
+    proposed_opinion: str | None = None
+    raw_text: str
+
+
+class WordReportParseResponse(BaseModel):
+    filename: str
+    full_text: str
+    text_length: int
+    preview: str
+    basic_info: str | None = None
+    task_summary: str | None = None
+    risk_points: list[WordRiskPoint]
+    warnings: list[str]
+
+
+class WordReportReviewRequest(BaseModel):
+    filename: str | None = None
+    full_text: str = Field(..., min_length=1, max_length=200000)
+    basic_info: str | None = None
+    task_summary: str | None = None
+    risk_points: list[WordRiskPoint] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
 class StructureRow(BaseModel):
     standard_title: str
     actual_expression: str

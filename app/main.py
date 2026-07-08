@@ -14,11 +14,14 @@ from app.schemas import (
     ReportReviewRequest,
     ReportReviewResponse,
     RiskClueParseResponse,
+    WordReportParseResponse,
+    WordReportReviewRequest,
 )
 from app.services.deepseek_service import DeepSeekService
 from app.services.excel_service import parse_report_excel
 from app.services.knowledge_service import KnowledgeCategory, search_knowledge
 from app.services.risk_clue_service import parse_risk_clue_excel
+from app.services.word_report_service import parse_word_report
 
 
 settings = get_settings()
@@ -103,6 +106,11 @@ async def parse_report(file: UploadFile = File(...)) -> ReportParseResponse:
     return await parse_report_excel(file)
 
 
+@app.post("/api/report/word/parse", response_model=WordReportParseResponse)
+async def parse_word_report_file(file: UploadFile = File(...)) -> WordReportParseResponse:
+    return await parse_word_report(file)
+
+
 @app.post("/api/report/review", response_model=ReportReviewResponse)
 async def review_report(payload: ReportReviewRequest) -> ReportReviewResponse:
     return deepseek_service.review_report(
@@ -113,6 +121,18 @@ async def review_report(payload: ReportReviewRequest) -> ReportReviewResponse:
         risk_brief=payload.risk_brief,
         manual_conclusion=payload.manual_conclusion,
         rectification_status=payload.rectification_status,
+    )
+
+
+@app.post("/api/report/word/review", response_model=ReportReviewResponse)
+async def review_word_report(payload: WordReportReviewRequest) -> ReportReviewResponse:
+    return deepseek_service.review_word_report(
+        filename=payload.filename,
+        full_text=payload.full_text.strip(),
+        basic_info=payload.basic_info,
+        task_summary=payload.task_summary,
+        risk_points=payload.risk_points,
+        warnings=payload.warnings,
     )
 
 

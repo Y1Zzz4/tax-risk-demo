@@ -9,6 +9,8 @@ const state = {
   riskClues: [],
   selectedRiskCompany: null,
   companyAdviceRecords: {},
+  wordReport: null,
+  lastWordReviewText: "",
 };
 
 const $ = (id) => document.getElementById(id);
@@ -931,14 +933,18 @@ function appendReviewTopSummary(parent, data) {
 }
 
 function renderReviewResult(data, options = {}) {
-  const container = $("reviewResult");
+  const container = $(options.containerId || "reviewResult");
   container.innerHTML = "";
 
   if (options.fromCache) {
     appendTextElement(container, "div", "已展示本次页面会话中生成的复核结果。如需重新调用模型，请点击“重新复核”。", "cache-notice");
   }
 
-  appendOriginalReportInfo(container, state.selectedReport);
+  if (options.sourceRenderer) {
+    options.sourceRenderer(container);
+  } else {
+    appendOriginalReportInfo(container, state.selectedReport);
+  }
   appendTextElement(container, "div", `报告分析对象：${data.report_object}`, "object-title");
   appendReviewTopSummary(container, data);
 
@@ -999,9 +1005,15 @@ function renderReviewResult(data, options = {}) {
   appendSection(container, "最终复核意见");
   appendTextElement(container, "p", data.final_review_opinion);
 
-  state.lastReviewText = formatReviewPlainText(data);
+  const plainText = options.plainTextFormatter ? options.plainTextFormatter(data) : formatReviewPlainText(data);
+  if (options.textTarget === "word") {
+    state.lastWordReviewText = plainText;
+  } else {
+    state.lastReviewText = plainText;
+  }
   container.classList.remove("d-none");
-  $("copyReviewBtn").classList.remove("d-none");
+  const copyButton = $(options.copyButtonId || "copyReviewBtn");
+  if (copyButton) copyButton.classList.remove("d-none");
 }
 
 function tableToText(headers, rows, fields) {
@@ -1024,9 +1036,9 @@ function formatOriginalReportPlainText(report) {
   ].join("\n");
 }
 
-function formatReviewPlainText(data) {
+function formatReviewPlainText(data, options = {}) {
   const lines = [];
-  const originalReportText = formatOriginalReportPlainText(state.selectedReport);
+  const originalReportText = options.includeOriginal === false ? "" : formatOriginalReportPlainText(state.selectedReport);
   const supportStatus = data.manual_conclusion_support_check
     ? data.manual_conclusion_support_check.support_status
     : "未返回";
@@ -1082,6 +1094,208 @@ function formatReviewPlainText(data) {
     data.final_review_opinion,
   );
   return lines.join("\n");
+}
+
+function switchReportReviewMode(mode) {
+  const isWord = mode === "word";
+  $("reportExcelPanel").classList.toggle("d-none", isWord);
+  $("reportWordPanel").classList.toggle("d-none", !isWord);
+  $("reportExcelModeBtn").classList.toggle("active", !isWord);
+  $("reportWordModeBtn").classList.toggle("active", isWord);
+}
+
+function appendWordReportInfo(parent) {
+  if (!state.wordReport) return;
+  const panel = document.createElement("section");
+  panel.className = "source-record-panel";
+  appendTextElement(panel, "h3", "Word 报告解析信息");
+  const grid = document.createElement("div");
+  grid.className = "record-meta-grid";
+  [
+    ["文件名", state.wordReport.filename],
+    ["全文长度", `${state.wordReport.text_length} 字`],
+    ["识别风险点", `${state.wordReport.risk_points.length} 个`],
+    ["解析警告", `${state.wordReport.warnings.length} 条`],
+  ].forEach(([label, value]) => {
+    const item = document.createElement("div");
+    item.className = "record-meta-item";
+    appendTextElement(item, "span", label, "record-meta-label");
+    appendTextElement(item, "span", value, "record-meta-value");
+    grid.appendChild(item);
+  });
+  panel.appendChild(grid);
+  parent.appendChild(panel);
+}
+
+function formatWordSourcePlainText() {
+  if (!state.wordReport) return "";
+  const lines = [
+    "Word 报告解析信息",
+    `文件名：${state.wordReport.filename}`,
+    `全文长度：${state.wordReport.text_length} 字`,
+    `识别风险点：${state.wordReport.risk_points.length} 个`,
+    `解析警告：${state.wordReport.warnings.length} 条`,
+  ];
+  if (state.wordReport.warnings.length) {
+    lines.push("", "解析警告", listToText(state.wordReport.warnings));
+  }
+  return lines.join("\n");
+}
+
+function formatWordReviewPlainText(data) {
+  const sourceText = formatWordSourcePlainText();
+  const reviewText = formatReviewPlainText(data, { includeOriginal: false });
+  return sourceText ? `${sourceText}\n\n${reviewText}` : reviewText;
+}
+
+function renderWordReportParsed(data) {
+  state.wordReport = data;
+  state.lastWordReviewText = "";
+  $("wordReportSummary").textContent = `已解析 ${data.filename}，全文 ${data.text_length} 字，识别 ${data.risk_points.length} 个风险点`;
+  $("wordReportPreview").textContent = data.full_text;
+  $("copyWordReviewBtn").classList.add("d-none");
+  $("wordReviewResult").innerHTML = "";
+  $("wordReviewResult").classList.add("d-none");
+  clearLoadingPanel("wordReviewLoadingPanel");
+
+  const warnings = $("wordParseWarnings");
+  warnings.innerHTML = "";
+  if (data.warnings && data.warnings.length) {
+    appendTextElement(warnings, "strong", "解析提示");
+    const list = document.createElement("ul");
+    data.warnings.forEach((warning) => appendTextElement(list, "li", warning));
+    warnings.appendChild(list);
+    warnings.classList.remove("d-none");
+  } else {
+    warnings.classList.add("d-none");
+  }
+
+  const meta = $("wordReportMeta");
+  meta.innerHTML = "";
+  [
+    ["应对任务基本情况", data.basic_info ? formatShortText(data.basic_info, 120) : "未识别"],
+    ["任务具体情况总体概括", data.task_summary ? formatShortText(data.task_summary, 120) : "未识别"],
+    ["全文长度", `${data.text_length} 字`],
+  ].forEach(([label, value]) => {
+    const item = document.createElement("div");
+    item.className = "record-meta-item";
+    appendTextElement(item, "span", label, "record-meta-label");
+    appendTextElement(item, "span", value, "record-meta-value");
+    meta.appendChild(item);
+  });
+
+  const tbody = $("wordRiskPointBody");
+  tbody.innerHTML = "";
+  if (data.risk_points.length) {
+    data.risk_points.forEach((point) => {
+      const row = document.createElement("tr");
+      appendTextElement(row, "td", `风险点${point.index}：${point.title}`);
+      appendTextElement(row, "td", point.description || "未识别");
+      appendTextElement(row, "td", point.verification || "未识别");
+      appendTextElement(row, "td", point.policy_basis || "未识别");
+      appendTextElement(row, "td", point.proposed_opinion || "未识别");
+      tbody.appendChild(row);
+    });
+  } else {
+    const row = document.createElement("tr");
+    const cell = appendTextElement(row, "td", "未识别到结构化风险点，请确认文档是否使用“风险点x：xx风险”格式。");
+    cell.colSpan = 5;
+    tbody.appendChild(row);
+  }
+  $("wordParsedStage").classList.remove("d-none");
+  $("wordResetBtn").classList.remove("d-none");
+}
+
+function resetWordReport() {
+  state.wordReport = null;
+  state.lastWordReviewText = "";
+  $("wordReportInput").value = "";
+  $("wordReportFileName").textContent = "未选择文件";
+  $("wordParsedStage").classList.add("d-none");
+  $("wordResetBtn").classList.add("d-none");
+  $("wordRiskPointBody").innerHTML = "";
+  $("wordReportMeta").innerHTML = "";
+  $("wordReviewResult").innerHTML = "";
+  $("wordReviewResult").classList.add("d-none");
+  $("copyWordReviewBtn").classList.add("d-none");
+  clearLoadingPanel("wordReviewLoadingPanel");
+}
+
+async function handleParseWordReport() {
+  const file = $("wordReportInput").files[0];
+  if (!file) {
+    showToast("请先选择 .docx Word 报告。");
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append("file", file);
+  setLoading($("wordParseBtn"), $("wordParseSpinner"), true);
+  try {
+    const data = await fetchJson("/api/report/word/parse", {
+      method: "POST",
+      body: formData,
+    });
+    renderWordReportParsed(data);
+    showToast("Word 报告解析完成。", "success");
+  } catch (error) {
+    showToast(error.message);
+  } finally {
+    setLoading($("wordParseBtn"), $("wordParseSpinner"), false);
+  }
+}
+
+async function handleWordReview() {
+  if (!state.wordReport) {
+    showToast("请先解析 Word 报告。");
+    return;
+  }
+
+  setLoading($("wordReviewBtn"), $("wordReviewSpinner"), true);
+  $("wordReviewResult").classList.add("d-none");
+  $("copyWordReviewBtn").classList.add("d-none");
+  const reviewController = new AbortController();
+  state.activeRequests.wordReview = reviewController;
+  startLoadingPanel("wordReviewLoadingPanel", {
+    title: "Word 完整报告复核任务处理中",
+    context: [
+      { label: "文件名", value: state.wordReport.filename },
+      { label: "全文长度", value: `${state.wordReport.text_length} 字` },
+      { label: "风险点数量", value: `${state.wordReport.risk_points.length} 个` },
+      { label: "解析提示", value: `${state.wordReport.warnings.length} 条` },
+    ],
+    estimatedTime: "通常 30-90 秒",
+    stages: ["确认 Word 结构", "提交复核任务", "分析风险点完整性", "生成复核意见"],
+    note: "复核依据当前 Word 提取文本和结构化风险点进行，不重新判定企业风险，不自动检索政策法规、历史案例、企业外部数据或关键字规则库。",
+    stageDurationMs: 9000,
+    abort: {
+      label: "中止本次复核",
+      onClick: () => abortActiveRequest("wordReview", "wordReviewLoadingPanel", "Word 报告复核任务已中止"),
+    },
+  });
+  try {
+    const data = await fetchJson("/api/report/word/review", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(state.wordReport),
+      signal: reviewController.signal,
+    });
+    clearLoadingPanel("wordReviewLoadingPanel");
+    renderReviewResult(data, {
+      containerId: "wordReviewResult",
+      copyButtonId: "copyWordReviewBtn",
+      textTarget: "word",
+      sourceRenderer: appendWordReportInfo,
+      plainTextFormatter: formatWordReviewPlainText,
+    });
+  } catch (error) {
+    if (error.name === "AbortError") return;
+    showLoadingError("wordReviewLoadingPanel", "Word 报告复核任务未完成", error.message);
+    showToast(error.message);
+  } finally {
+    clearActiveRequest("wordReview");
+    setLoading($("wordReviewBtn"), $("wordReviewSpinner"), false);
+  }
 }
 
 async function handleReview() {
@@ -1153,6 +1367,19 @@ async function copyReviewResult() {
   }
 }
 
+async function copyWordReviewResult() {
+  if (!state.lastWordReviewText) {
+    showToast("暂无可复制的 Word 复核结果。");
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(state.lastWordReviewText);
+    showToast("Word 复核结果已复制。", "success");
+  } catch (error) {
+    showToast("复制失败，请手动选择结果文本复制。");
+  }
+}
+
 function bindIfExists(id, eventName, handler) {
   const element = $(id);
   if (element) {
@@ -1199,6 +1426,16 @@ function bindEvents() {
     if (event.key === "Enter") handleKnowledgeSearch("cases");
   });
   bindIfExists("parseBtn", "click", handleParseReport);
+  bindIfExists("reportExcelModeBtn", "click", () => switchReportReviewMode("excel"));
+  bindIfExists("reportWordModeBtn", "click", () => switchReportReviewMode("word"));
+  bindIfExists("wordParseBtn", "click", handleParseWordReport);
+  bindIfExists("wordResetBtn", "click", resetWordReport);
+  bindIfExists("wordReviewBtn", "click", handleWordReview);
+  bindIfExists("copyWordReviewBtn", "click", copyWordReviewResult);
+  bindIfExists("wordReportInput", "change", () => {
+    const file = $("wordReportInput").files[0];
+    $("wordReportFileName").textContent = file ? file.name : "未选择文件";
+  });
   bindIfExists("resetUploadBtn", "click", resetUpload);
   bindIfExists("backToListBtn", "click", backToList);
   bindIfExists("reviewBtn", "click", handleReview);
