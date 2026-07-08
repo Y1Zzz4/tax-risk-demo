@@ -118,3 +118,27 @@ class ReportReviewResponse(BaseModel):
     quality_evaluation: QualityEvaluation
     review_summary: ReviewSummary
     final_review_opinion: str
+
+
+class KnowledgeSearchRequest(BaseModel):
+    query: str = Field("", max_length=200)
+    limit: int = Field(20, ge=1, le=50)
+
+
+class KnowledgeSearchItem(BaseModel):
+    row_index: int
+    title: str
+    subtitle: str | None = None
+    content_preview: str
+    fields: dict[str, str]
+
+
+class KnowledgeSearchResponse(BaseModel):
+    category: Literal["policies", "cases"]
+    category_name: str
+    source_file: str
+    exists: bool
+    total_rows: int
+    matched_count: int
+    results: list[KnowledgeSearchItem]
+    message: str

@@ -1,12 +1,21 @@
 from fastapi import FastAPI, File, Request, UploadFile
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from app.config import get_settings
-from app.schemas import ChatRequest, ChatResponse, ReportParseResponse, ReportReviewRequest, ReportReviewResponse
+from app.schemas import (
+    ChatRequest,
+    ChatResponse,
+    KnowledgeSearchRequest,
+    KnowledgeSearchResponse,
+    ReportParseResponse,
+    ReportReviewRequest,
+    ReportReviewResponse,
+)
 from app.services.deepseek_service import DeepSeekService
 from app.services.excel_service import parse_report_excel
+from app.services.knowledge_service import KnowledgeCategory, search_knowledge
 
 
 settings = get_settings()
@@ -17,9 +26,49 @@ deepseek_service = DeepSeekService()
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 
-@app.get("/", response_class=HTMLResponse)
-async def index(request: Request) -> HTMLResponse:
-    return templates.TemplateResponse(request, "index.html", {"app_name": settings.app_name})
+PAGE_CONFIG = {
+    "smart-response": {"label": "智能应对", "section": "服务模块"},
+    "report-review": {"label": "报告复核", "section": "服务模块"},
+    "policies": {"label": "政策法规", "section": "知识库"},
+    "cases": {"label": "历史案例", "section": "知识库"},
+}
+
+
+def render_page(request: Request, page: str) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request,
+        "index.html",
+        {
+            "app_name": settings.app_name,
+            "active_page": page,
+            "page_config": PAGE_CONFIG,
+        },
+    )
+
+
+@app.get("/")
+async def index() -> RedirectResponse:
+    return RedirectResponse(url="/service/smart-response")
+
+
+@app.get("/service/smart-response", response_class=HTMLResponse)
+async def smart_response_page(request: Request) -> HTMLResponse:
+    return render_page(request, "smart-response")
+
+
+@app.get("/service/report-review", response_class=HTMLResponse)
+async def report_review_page(request: Request) -> HTMLResponse:
+    return render_page(request, "report-review")
+
+
+@app.get("/knowledge/policies", response_class=HTMLResponse)
+async def policies_page(request: Request) -> HTMLResponse:
+    return render_page(request, "policies")
+
+
+@app.get("/knowledge/cases", response_class=HTMLResponse)
+async def cases_page(request: Request) -> HTMLResponse:
+    return render_page(request, "cases")
 
 
 @app.get("/api/health")
@@ -48,3 +97,8 @@ async def review_report(payload: ReportReviewRequest) -> ReportReviewResponse:
         manual_conclusion=payload.manual_conclusion,
         rectification_status=payload.rectification_status,
     )
+
+
+@app.post("/api/knowledge/{category}/search", response_model=KnowledgeSearchResponse)
+async def search_knowledge_base(category: KnowledgeCategory, payload: KnowledgeSearchRequest) -> KnowledgeSearchResponse:
+    return search_knowledge(category, payload.query.strip(), payload.limit)

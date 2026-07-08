@@ -151,5 +151,5 @@ class DeepSeekService:
             }
         result = self._validate(parsed, ReportReviewResponse)
         result.keyword_check.status = "暂未启用"
-        result.keyword_check.content = "当前演示版本暂未接入既有关键字检索指标与规则库，本项不作自动命中判定。"
+        result.keyword_check.content = "当前版本暂未接入既有关键字检索指标与规则库，本项不作自动命中判定。"
         return result

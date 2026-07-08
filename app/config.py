@@ -8,7 +8,7 @@ load_dotenv()
 
 
 class Settings:
-    app_name: str = "税务风控核查智能体（演示版）"
+    app_name: str = "企业风险核查智能体"
     deepseek_api_key: str | None
     deepseek_base_url: str
     deepseek_model: str

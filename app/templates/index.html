@@ -5,35 +5,57 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{{ app_name }}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="/static/styles.css?v=20260708-5">
+    <link rel="stylesheet" href="/static/styles.css?v=20260708-7">
   </head>
   <body>
     <header class="top-banner">
       <div class="container-xxl">
         <div class="banner-inner">
           <div>
-            <h1>税务风控核查智能体（演示版）</h1>
-            <p>当前版本仅接入大模型能力，暂未接入内部知识库、政策法规库、案例库及既有质量规则库。</p>
+            <h1>{{ app_name }}</h1>
+            <p>面向企业风险核查场景，提供智能应对、报告复核与本地知识库检索能力。</p>
           </div>
-          <span class="demo-badge">MVP 演示</span>
         </div>
       </div>
     </header>
 
-    <main class="container-xxl main-shell">
-      <ul class="nav nav-tabs" id="mainTabs" role="tablist">
-        <li class="nav-item" role="presentation">
-          <button class="nav-link active" id="chat-tab" data-bs-toggle="tab" data-bs-target="#chat-pane" type="button" role="tab">智能解答</button>
-        </li>
-        <li class="nav-item" role="presentation">
-          <button class="nav-link" id="review-tab" data-bs-toggle="tab" data-bs-target="#review-pane" type="button" role="tab">报告质量复核</button>
-        </li>
-      </ul>
+    <button class="menu-toggle-btn" id="menuToggleBtn" type="button" aria-controls="sideMenu" aria-expanded="false">
+      <span class="menu-toggle-icon"></span>
+      <span>菜单</span>
+    </button>
+    <div class="menu-backdrop" id="menuBackdrop"></div>
 
-      <section class="tab-content content-panel">
-        <div class="tab-pane fade show active" id="chat-pane" role="tabpanel" tabindex="0">
+    <main class="container-xxl main-shell">
+      <div class="workspace-layout">
+        <aside class="side-menu" id="sideMenu" aria-label="系统菜单">
+          <div class="side-menu-header">
+            <div>
+              <strong>功能导航</strong>
+              <span>{{ page_config[active_page].section }}</span>
+            </div>
+            <button class="menu-close-btn" id="menuCloseBtn" type="button" aria-label="关闭菜单">×</button>
+          </div>
+          <div class="menu-group">
+            <div class="menu-group-title">服务模块</div>
+            <div class="nav flex-column">
+              <a class="nav-link menu-link {% if active_page == 'smart-response' %}active{% endif %}" href="/service/smart-response">智能应对</a>
+              <a class="nav-link menu-link {% if active_page == 'report-review' %}active{% endif %}" href="/service/report-review">报告复核</a>
+            </div>
+          </div>
+          <div class="menu-group">
+            <div class="menu-group-title">知识库</div>
+            <div class="nav flex-column">
+              <a class="nav-link menu-link {% if active_page == 'policies' %}active{% endif %}" href="/knowledge/policies">政策法规</a>
+              <a class="nav-link menu-link {% if active_page == 'cases' %}active{% endif %}" href="/knowledge/cases">历史案例</a>
+            </div>
+          </div>
+        </aside>
+
+        <section class="content-panel">
+        {% if active_page == 'smart-response' %}
+        <div class="module-page" id="chat-pane">
           <div class="section-title">
-            <h2>智能解答</h2>
+            <h2>智能应对</h2>
             <span>一般性研判框架与辅助建议</span>
           </div>
 
@@ -63,10 +85,12 @@
             <div id="chatHistoryList" class="history-list"></div>
           </div>
         </div>
+        {% endif %}
 
-        <div class="tab-pane fade" id="review-pane" role="tabpanel" tabindex="0">
+        {% if active_page == 'report-review' %}
+        <div class="module-page" id="review-pane">
           <div class="section-title">
-            <h2>报告质量复核</h2>
+            <h2>报告复核</h2>
             <span>上传风险应对报告清单，选择待复核记录后生成质量复核意见</span>
           </div>
 
@@ -143,11 +167,55 @@
             <div id="reviewResult" class="review-result mt-4 d-none"></div>
           </div>
         </div>
+        {% endif %}
+
+        {% if active_page == 'policies' %}
+        <div class="module-page" id="policies-pane">
+          <div class="section-title">
+            <h2>政策法规</h2>
+            <span>检索政策法规资料</span>
+          </div>
+
+          <div class="knowledge-search">
+            <label for="policySearchInput" class="form-label">检索关键词</label>
+            <div class="knowledge-search-row">
+              <input class="form-control" id="policySearchInput" type="search" placeholder="输入政策标题、文号、关键词或条款内容">
+              <button class="btn btn-primary" id="policySearchBtn">
+                <span class="spinner-border spinner-border-sm d-none" id="policySpinner" aria-hidden="true"></span>
+                检索
+              </button>
+            </div>
+          </div>
+          <div id="policySearchResult" class="knowledge-result"></div>
+        </div>
+        {% endif %}
+
+        {% if active_page == 'cases' %}
+        <div class="module-page" id="cases-pane">
+          <div class="section-title">
+            <h2>历史案例</h2>
+            <span>检索历史风险应对案例</span>
+          </div>
+
+          <div class="knowledge-search">
+            <label for="caseSearchInput" class="form-label">检索关键词</label>
+            <div class="knowledge-search-row">
+              <input class="form-control" id="caseSearchInput" type="search" placeholder="输入案例名称、行业、风险类型或处理结果">
+              <button class="btn btn-primary" id="caseSearchBtn">
+                <span class="spinner-border spinner-border-sm d-none" id="caseSpinner" aria-hidden="true"></span>
+                检索
+              </button>
+            </div>
+          </div>
+          <div id="caseSearchResult" class="knowledge-result"></div>
+        </div>
+        {% endif %}
       </section>
+      </div>
     </main>
 
     <footer class="footer-note">
-      <div class="container-xxl">演示版声明：本系统仅用于功能演示，输出内容为辅助性研判结果，不作为正式执法意见或业务结论。</div>
+      <div class="container-xxl">系统声明：输出内容为辅助性研判结果，不作为正式执法意见或业务结论。</div>
     </footer>
 
     <div class="toast-container position-fixed top-0 end-0 p-3">
@@ -166,6 +234,6 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="/static/app.js?v=20260708-5"></script>
+    <script src="/static/app.js?v=20260708-7"></script>
   </body>
 </html>

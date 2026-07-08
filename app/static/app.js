@@ -234,6 +234,91 @@ function renderChatResult(data) {
   container.classList.remove("d-none");
 }
 
+const knowledgeSearchConfig = {
+  policies: {
+    inputId: "policySearchInput",
+    buttonId: "policySearchBtn",
+    spinnerId: "policySpinner",
+    resultId: "policySearchResult",
+    endpoint: "/api/knowledge/policies/search",
+  },
+  cases: {
+    inputId: "caseSearchInput",
+    buttonId: "caseSearchBtn",
+    spinnerId: "caseSpinner",
+    resultId: "caseSearchResult",
+    endpoint: "/api/knowledge/cases/search",
+  },
+};
+
+function appendKnowledgeFields(parent, fields) {
+  const details = document.createElement("details");
+  details.className = "knowledge-fields";
+  appendTextElement(details, "summary", "查看原始字段");
+
+  const table = document.createElement("table");
+  table.className = "table table-sm table-bordered align-middle";
+  const tbody = document.createElement("tbody");
+  Object.entries(fields || {}).forEach(([label, value]) => {
+    const row = document.createElement("tr");
+    appendTextElement(row, "th", label);
+    appendTextElement(row, "td", value);
+    tbody.appendChild(row);
+  });
+  table.appendChild(tbody);
+  details.appendChild(table);
+  parent.appendChild(details);
+}
+
+function renderKnowledgeResult(resultId, data) {
+  const container = $(resultId);
+  container.innerHTML = "";
+
+  const status = document.createElement("div");
+  status.className = data.exists ? "knowledge-status" : "knowledge-status warning";
+  appendTextElement(status, "strong", data.message);
+  if (data.exists) {
+    appendTextElement(status, "span", `数据文件：${data.source_file}，总记录数：${data.total_rows}`);
+  }
+  container.appendChild(status);
+
+  if (!data.exists || !data.results.length) {
+    appendTextElement(container, "div", data.exists ? "未检索到匹配记录，请调整关键词后重试。" : "知识库文件就绪后可直接检索。", "empty-state");
+    return;
+  }
+
+  const list = document.createElement("div");
+  list.className = "knowledge-list";
+  data.results.forEach((item) => {
+    const card = document.createElement("article");
+    card.className = "knowledge-card";
+    appendTextElement(card, "h3", item.title);
+    if (item.subtitle) appendTextElement(card, "div", item.subtitle, "knowledge-subtitle");
+    appendTextElement(card, "p", item.content_preview);
+    appendKnowledgeFields(card, item.fields);
+    list.appendChild(card);
+  });
+  container.appendChild(list);
+}
+
+async function handleKnowledgeSearch(category) {
+  const config = knowledgeSearchConfig[category];
+  const query = $(config.inputId).value.trim();
+  setLoading($(config.buttonId), $(config.spinnerId), true);
+  try {
+    const data = await fetchJson(config.endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query, limit: 20 }),
+    });
+    renderKnowledgeResult(config.resultId, data);
+  } catch (error) {
+    showToast(error.message);
+  } finally {
+    setLoading($(config.buttonId), $(config.spinnerId), false);
+  }
+}
+
 function addChatHistory(question) {
   state.chatHistory = [question, ...state.chatHistory.filter((item) => item !== question)].slice(0, 5);
   renderChatHistory();
@@ -287,17 +372,17 @@ async function handleChatSubmit() {
   const chatController = new AbortController();
   state.activeRequests.chat = chatController;
   startLoadingPanel("chatLoadingPanel", {
-    title: "智能解答任务处理中",
+    title: "智能应对任务处理中",
     context: [
       { label: "任务类型", value: "风险核查辅助研判" },
       { label: "输入长度", value: `${question.length} 字` },
     ],
     estimatedTime: "通常 10-40 秒",
     stages: ["提交问题", "调用大模型生成辅助研判", "整理结构化结果", "等待结果返回"],
-    note: "当前版本仅调用大模型生成一般性研判框架，不进行政策库、案例库或内部数据检索。",
+    note: "当前服务仅调用大模型生成一般性研判框架，不自动检索政策法规、历史案例或内部数据。",
     abort: {
       label: "中止本次分析",
-      onClick: () => abortActiveRequest("chat", "chatLoadingPanel", "智能解答任务已中止"),
+      onClick: () => abortActiveRequest("chat", "chatLoadingPanel", "智能应对任务已中止"),
     },
   });
   try {
@@ -312,7 +397,7 @@ async function handleChatSubmit() {
     addChatHistory(question);
   } catch (error) {
     if (error.name === "AbortError") return;
-    showLoadingError("chatLoadingPanel", "智能解答任务未完成", error.message);
+    showLoadingError("chatLoadingPanel", "智能应对任务未完成", error.message);
     showToast(error.message);
   } finally {
     clearActiveRequest("chat");
@@ -746,7 +831,7 @@ async function handleReview() {
   const reviewController = new AbortController();
   state.activeRequests.review = reviewController;
   startLoadingPanel("reviewLoadingPanel", {
-    title: "报告质量复核任务处理中",
+    title: "报告复核任务处理中",
     context: [
       { label: "复核对象", value: getTaxpayerName(state.selectedReport) },
       { label: "报告编号", value: getReportId(state.selectedReport) },
@@ -755,7 +840,7 @@ async function handleReview() {
     ],
     estimatedTime: "通常 20-60 秒",
     stages: ["确认报告正文", "提交复核任务", "分析结构与完整性", "生成复核意见"],
-    note: "复核依据当前情况说明及上传表中的疑点、人工认定结果等字段进行，不重新判定企业风险，不进行政策库、案例库、企业外部数据或关键字规则库检索。",
+    note: "复核依据当前情况说明及上传表中的疑点、人工认定结果等字段进行，不重新判定企业风险，不自动检索政策法规、历史案例、企业外部数据或关键字规则库。",
     stageDurationMs: 7000,
     abort: {
       label: "中止本次复核",
@@ -804,16 +889,51 @@ async function copyReviewResult() {
   }
 }
 
+function bindIfExists(id, eventName, handler) {
+  const element = $(id);
+  if (element) {
+    element.addEventListener(eventName, handler);
+  }
+}
+
+function setMenuOpen(isOpen) {
+  document.body.classList.toggle("menu-open", isOpen);
+  const button = $("menuToggleBtn");
+  if (button) {
+    button.setAttribute("aria-expanded", String(isOpen));
+  }
+}
+
+function bindMenuDrawer() {
+  bindIfExists("menuToggleBtn", "click", () => setMenuOpen(true));
+  bindIfExists("menuCloseBtn", "click", () => setMenuOpen(false));
+  bindIfExists("menuBackdrop", "click", () => setMenuOpen(false));
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      setMenuOpen(false);
+    }
+  });
+}
+
 function bindEvents() {
-  $("chatSubmitBtn").addEventListener("click", handleChatSubmit);
-  $("chatClearBtn").addEventListener("click", resetChat);
-  $("chatClearHistoryBtn").addEventListener("click", clearChatHistory);
-  $("parseBtn").addEventListener("click", handleParseReport);
-  $("resetUploadBtn").addEventListener("click", resetUpload);
-  $("backToListBtn").addEventListener("click", backToList);
-  $("reviewBtn").addEventListener("click", handleReview);
-  $("copyReviewBtn").addEventListener("click", copyReviewResult);
-  $("excelInput").addEventListener("change", () => {
+  bindMenuDrawer();
+  bindIfExists("chatSubmitBtn", "click", handleChatSubmit);
+  bindIfExists("chatClearBtn", "click", resetChat);
+  bindIfExists("chatClearHistoryBtn", "click", clearChatHistory);
+  bindIfExists("policySearchBtn", "click", () => handleKnowledgeSearch("policies"));
+  bindIfExists("caseSearchBtn", "click", () => handleKnowledgeSearch("cases"));
+  bindIfExists("policySearchInput", "keydown", (event) => {
+    if (event.key === "Enter") handleKnowledgeSearch("policies");
+  });
+  bindIfExists("caseSearchInput", "keydown", (event) => {
+    if (event.key === "Enter") handleKnowledgeSearch("cases");
+  });
+  bindIfExists("parseBtn", "click", handleParseReport);
+  bindIfExists("resetUploadBtn", "click", resetUpload);
+  bindIfExists("backToListBtn", "click", backToList);
+  bindIfExists("reviewBtn", "click", handleReview);
+  bindIfExists("copyReviewBtn", "click", copyReviewResult);
+  bindIfExists("excelInput", "change", () => {
     const file = $("excelInput").files[0];
     $("selectedFileName").textContent = file ? file.name : "未选择文件";
   });
