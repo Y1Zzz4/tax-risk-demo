@@ -13,6 +13,7 @@ const state = {
   wordReport: null,
   selectedWordRiskPointIndex: null,
   lastWordReviewText: "",
+  lastWordReviewContext: null,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -275,49 +276,69 @@ function riskClueMatches(clue, query) {
     .every((token) => haystack.includes(token));
 }
 
+function riskCompanyMatches(companyName, clues, query) {
+  if (!query) return true;
+  const haystack = [
+    companyName,
+    ...clues.flatMap((clue) => [clue.sequence_no, clue.risk_name, clue.risk_period, clue.risk_description]),
+  ]
+    .join(" ")
+    .toLowerCase();
+  return query
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .every((token) => haystack.includes(token));
+}
+
+function selectedRiskCompanyClues() {
+  return state.selectedRiskCompany ? getRiskCluesForCompany(state.selectedRiskCompany) : [];
+}
+
 function renderRiskClueList() {
-  const list = $("riskClueList");
+  const list = $("riskCompanyList");
   const summary = $("riskClueSearchSummary");
   if (!list || !summary) return;
   const query = ($("riskClueSearchInput") && $("riskClueSearchInput").value.trim()) || "";
-  const filtered = state.riskClues.filter((clue) => riskClueMatches(clue, query));
-  const visible = filtered.slice(0, 80);
+  const groups = groupRiskCluesByCompany();
+  const companies = Object.entries(groups)
+    .filter(([companyName, clues]) => riskCompanyMatches(companyName, clues, query))
+    .sort(([left], [right]) => left.localeCompare(right, "zh-Hans-CN"));
   list.innerHTML = "";
   summary.textContent = query
-    ? `检索到 ${filtered.length} 条风险疑点 / 共 ${state.riskClues.length} 条${filtered.length > visible.length ? "，当前显示前 80 条" : ""}`
-    : `展示全部 ${filtered.length} 条风险疑点${filtered.length > visible.length ? "，当前显示前 80 条" : ""}`;
+    ? `检索到 ${companies.length} 户企业 / 共 ${Object.keys(groups).length} 户企业`
+    : `展示全部 ${companies.length} 户企业，共 ${state.riskClues.length} 条风险疑点`;
 
-  if (!filtered.length) {
-    appendTextElement(list, "div", "未检索到匹配疑点，请调整关键词。", "empty-state");
+  if (!companies.length) {
+    appendTextElement(list, "div", "未检索到匹配企业，请调整关键词。", "empty-state");
     return;
   }
 
-  visible.forEach((clue) => {
+  companies.forEach(([companyName, clues]) => {
     const card = document.createElement("article");
-    card.className = "compact-card";
-    if (state.selectedRiskAdviceContext && state.selectedRiskAdviceContext.context_id === getRiskContextIdForClue(clue)) {
+    card.className = "company-index-card";
+    if (state.selectedRiskCompany === companyName) {
       card.classList.add("active");
     }
     const header = document.createElement("div");
     header.className = "compact-card-header";
-    appendTextElement(header, "h3", `${clue.taxpayer_name} · ${clue.risk_name}`);
-    appendTextElement(header, "span", `序号 ${clue.sequence_no} · ${clue.risk_period || "未提供所属期"}`);
+    appendTextElement(header, "h3", companyName);
+    appendTextElement(header, "span", `${clues.length} 条风险点`);
     card.appendChild(header);
-    appendTextElement(card, "p", formatShortText(clue.risk_description, 180));
+    appendTextElement(card, "p", `风险所属期：${formatRiskPeriods(clues)}；本次会话建议记录：${getCompanyAdviceRecords(companyName).length} 条`);
+    const tags = document.createElement("div");
+    tags.className = "company-risk-tags";
+    clues.slice(0, 4).forEach((clue) => appendTextElement(tags, "span", clue.risk_name || "未提供疑点名称"));
+    if (clues.length > 4) appendTextElement(tags, "span", `还有 ${clues.length - 4} 条`);
+    card.appendChild(tags);
     const actions = document.createElement("div");
     actions.className = "compact-card-actions";
-    const singleButton = document.createElement("button");
-    singleButton.type = "button";
-    singleButton.className = "btn btn-sm btn-outline-primary";
-    singleButton.textContent = "选本条应对";
-    singleButton.addEventListener("click", () => selectRiskAdviceContext("single", clue));
-    const companyButton = document.createElement("button");
-    companyButton.type = "button";
-    companyButton.className = "btn btn-sm btn-outline-secondary";
-    companyButton.textContent = "选该企业全部";
-    companyButton.addEventListener("click", () => selectRiskAdviceContext("company", clue));
-    actions.appendChild(singleButton);
-    actions.appendChild(companyButton);
+    const openButton = document.createElement("button");
+    openButton.type = "button";
+    openButton.className = "btn btn-sm btn-outline-primary";
+    openButton.textContent = "进入企业";
+    openButton.addEventListener("click", () => selectRiskCompany(companyName));
+    actions.appendChild(openButton);
     card.appendChild(actions);
     list.appendChild(card);
   });
@@ -327,23 +348,126 @@ function getRiskContextIdForClue(clue) {
   return `single-${clue.row_index}-${clue.sequence_no}`;
 }
 
-function getRiskContextId(type, clue) {
-  return type === "company" ? `company-${clue.taxpayer_name}` : getRiskContextIdForClue(clue);
+function renderRiskCompanyMeta(clues) {
+  const grid = $("riskCompanyMetaGrid");
+  if (!grid) return;
+  grid.innerHTML = "";
+  [
+    ["纳税人名称", state.selectedRiskCompany || "未选择"],
+    ["风险点数量", `${clues.length} 条`],
+    ["风险所属期", formatRiskPeriods(clues)],
+    ["建议记录", `${getCompanyAdviceRecords(state.selectedRiskCompany).length} 条`],
+  ].forEach(([label, value]) => {
+    const item = document.createElement("div");
+    item.className = "record-meta-item";
+    appendTextElement(item, "span", label, "record-meta-label");
+    appendTextElement(item, "span", value, "record-meta-value");
+    grid.appendChild(item);
+  });
 }
 
-function selectRiskAdviceContext(type, clue) {
-  const riskClues = type === "company" ? getRiskCluesForCompany(clue.taxpayer_name) : [clue];
-  state.selectedRiskCompany = clue.taxpayer_name;
+function renderCompanyRiskClueList() {
+  const list = $("companyRiskClueList");
+  const summary = $("companyRiskSearchSummary");
+  if (!list || !summary) return;
+  const query = ($("companyRiskSearchInput") && $("companyRiskSearchInput").value.trim()) || "";
+  const clues = selectedRiskCompanyClues();
+  const filtered = clues.filter((clue) => riskClueMatches(clue, query));
+  list.innerHTML = "";
+  summary.textContent = query
+    ? `当前企业检索到 ${filtered.length} 条风险点 / 共 ${clues.length} 条`
+    : `当前企业共 ${filtered.length} 条风险点`;
+
+  if (!filtered.length) {
+    appendTextElement(list, "div", "当前企业未检索到匹配风险点。", "empty-state");
+    return;
+  }
+
+  filtered.forEach((clue) => {
+    const card = document.createElement("article");
+    card.className = "compact-card";
+    const isActive =
+      state.selectedRiskAdviceContext &&
+      (state.selectedRiskAdviceContext.context_id === getRiskContextIdForClue(clue) ||
+        state.selectedRiskAdviceContext.context_id === `company-${clue.taxpayer_name}`);
+    if (isActive) card.classList.add("active");
+    const header = document.createElement("div");
+    header.className = "compact-card-header";
+    appendTextElement(header, "h3", `${clue.sequence_no}. ${clue.risk_name}`);
+    appendTextElement(header, "span", clue.risk_period || "未提供所属期");
+    card.appendChild(header);
+    appendTextElement(card, "p", formatShortText(clue.risk_description, 220));
+    const actions = document.createElement("div");
+    actions.className = "compact-card-actions";
+    const singleButton = document.createElement("button");
+    singleButton.type = "button";
+    singleButton.className = "btn btn-sm btn-outline-primary";
+    singleButton.textContent = "以本条作为背景";
+    singleButton.addEventListener("click", () => selectRiskAdviceContext("single", clue));
+    actions.appendChild(singleButton);
+    card.appendChild(actions);
+    list.appendChild(card);
+  });
+}
+
+function renderRiskCompanyDetail() {
+  const clues = selectedRiskCompanyClues();
+  if (!state.selectedRiskCompany || !clues.length) {
+    $("riskCompanyDetailPanel").classList.add("d-none");
+    $("riskCompanyIndexPanel").classList.remove("d-none");
+    return;
+  }
+  $("riskCompanyIndexPanel").classList.add("d-none");
+  $("riskCompanyDetailPanel").classList.remove("d-none");
+  $("riskCompanyDetailTitle").textContent = state.selectedRiskCompany;
+  $("riskCompanyDetailMeta").textContent = `${clues.length} 条风险点 · ${getCompanyAdviceRecords(state.selectedRiskCompany).length} 条建议记录`;
+  renderRiskCompanyMeta(clues);
+  renderCompanyRiskClueList();
+  renderSelectedRiskContext();
+  renderAdviceRecords(state.selectedRiskCompany);
+}
+
+function selectRiskCompany(companyName) {
+  state.selectedRiskCompany = companyName;
+  state.selectedRiskAdviceContext = null;
+  if ($("companyRiskSearchInput")) $("companyRiskSearchInput").value = "";
+  $("riskAdviceInput").value = "";
+  $("riskAdviceResult").innerHTML = "";
+  $("riskAdviceResult").classList.add("d-none");
+  clearLoadingPanel("riskAdviceLoadingPanel");
+  renderRiskCompanyDetail();
+}
+
+function backToRiskCompanyIndex() {
+  state.selectedRiskCompany = null;
+  state.selectedRiskAdviceContext = null;
+  $("riskCompanyDetailPanel").classList.add("d-none");
+  $("riskCompanyIndexPanel").classList.remove("d-none");
+  $("selectedRiskCompanyPanel").classList.add("d-none");
+  clearLoadingPanel("riskAdviceLoadingPanel");
+  $("riskAdviceResult").innerHTML = "";
+  $("riskAdviceResult").classList.add("d-none");
+  renderRiskClueList();
+}
+
+function selectRiskAdviceContext(type, clue = null) {
+  const taxpayerName = type === "company" ? state.selectedRiskCompany : clue.taxpayer_name;
+  const riskClues = type === "company" ? getRiskCluesForCompany(taxpayerName) : [clue];
+  if (!taxpayerName || !riskClues.length) {
+    showToast("未找到可作为背景的企业风险点。");
+    return;
+  }
+  state.selectedRiskCompany = taxpayerName;
   state.selectedRiskAdviceContext = {
-    context_id: getRiskContextId(type, clue),
+    context_id: type === "company" ? `company-${taxpayerName}` : getRiskContextIdForClue(clue),
     type,
-    taxpayer_name: clue.taxpayer_name,
-    title: type === "company" ? `${clue.taxpayer_name}全部风险疑点` : `${clue.taxpayer_name}：${clue.risk_name}`,
+    taxpayer_name: taxpayerName,
+    title: type === "company" ? `${taxpayerName}全部风险疑点` : `${taxpayerName}：${clue.risk_name}`,
     risk_clues: riskClues,
   };
-  renderRiskClueList();
+  renderCompanyRiskClueList();
   renderSelectedRiskContext();
-  renderAdviceRecords(clue.taxpayer_name);
+  renderAdviceRecords(taxpayerName);
   $("riskAdviceInput").focus();
 }
 
@@ -370,13 +494,12 @@ function renderSelectedRiskContext() {
 
 function clearRiskAdviceContext() {
   state.selectedRiskAdviceContext = null;
-  state.selectedRiskCompany = null;
   $("riskAdviceInput").value = "";
   $("riskAdviceResult").innerHTML = "";
   $("riskAdviceResult").classList.add("d-none");
   clearLoadingPanel("riskAdviceLoadingPanel");
   renderSelectedRiskContext();
-  renderRiskClueList();
+  renderCompanyRiskClueList();
 }
 
 function resetRiskClues() {
@@ -387,11 +510,16 @@ function resetRiskClues() {
   $("riskClueInput").value = "";
   $("riskClueFileName").textContent = "未选择文件";
   $("riskClueWorkspace").classList.add("d-none");
+  $("riskCompanyIndexPanel").classList.remove("d-none");
+  $("riskCompanyDetailPanel").classList.add("d-none");
   $("selectedRiskCompanyPanel").classList.add("d-none");
   $("riskClueResetBtn").classList.add("d-none");
   $("riskClueSearchInput").value = "";
-  $("riskClueList").innerHTML = "";
+  $("riskCompanyList").innerHTML = "";
   $("riskClueSearchSummary").textContent = "";
+  $("companyRiskSearchInput").value = "";
+  $("companyRiskClueList").innerHTML = "";
+  $("companyRiskSearchSummary").textContent = "";
   $("riskAdviceInput").value = "";
   $("riskAdviceResult").innerHTML = "";
   $("riskAdviceResult").classList.add("d-none");
@@ -421,6 +549,8 @@ async function handleParseRiskClues() {
     state.companyAdviceRecords = {};
     $("riskClueSummary").textContent = `已解析 ${data.total_count} 条风险点，涉及 ${data.company_count} 户企业`;
     $("riskClueWorkspace").classList.remove("d-none");
+    $("riskCompanyIndexPanel").classList.remove("d-none");
+    $("riskCompanyDetailPanel").classList.add("d-none");
     $("selectedRiskCompanyPanel").classList.add("d-none");
     $("riskClueResetBtn").classList.remove("d-none");
     $("riskClueSearchInput").value = "";
@@ -445,6 +575,7 @@ function createAdviceRecord(result, question) {
     taxpayer_name: context.taxpayer_name,
     context_title: context.title,
     context_type: context.type,
+    context_scope: context.type === "company" ? "企业全部疑点" : "单条疑点",
     question: question || "根据上传下发疑点清单生成企业风险应对建议",
     risk_clues: context.risk_clues,
     result,
@@ -498,15 +629,21 @@ function renderAdviceRecords(companyName) {
 }
 
 function viewAdviceRecord(record) {
-  state.selectedRiskCompany = record.taxpayer_name;
+  selectRiskCompany(record.taxpayer_name);
+  const recordContextId =
+    record.context_type === "single" && record.risk_clues && record.risk_clues[0]
+      ? getRiskContextIdForClue(record.risk_clues[0])
+      : `company-${record.taxpayer_name}`;
   state.selectedRiskAdviceContext = {
-    context_id: `record-${record.id}`,
+    context_id: recordContextId,
     type: record.context_type || "company",
     taxpayer_name: record.taxpayer_name,
     title: record.context_title || record.taxpayer_name,
     risk_clues: record.risk_clues,
   };
   renderSelectedRiskContext();
+  renderCompanyRiskClueList();
+  renderAdviceRecords(record.taxpayer_name);
   renderChatResult(record.result, "riskAdviceResult");
   $("riskAdviceInput").value = record.question;
   $("riskAdviceResult").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -529,6 +666,8 @@ function formatAdviceRecordPlainText(record) {
   return [
     `纳税人名称：${record.taxpayer_name}`,
     `生成时间：${record.created_at}`,
+    `背景范围：${record.context_scope || (record.context_type === "single" ? "单条疑点" : "企业全部疑点")}`,
+    `背景名称：${record.context_title || record.taxpayer_name}`,
     `分析要求：${record.question}`,
     "",
     "下发疑点清单",
@@ -794,6 +933,8 @@ async function handleRiskAdviceSubmit() {
     renderChatResult(data, "riskAdviceResult");
     const record = createAdviceRecord(data, question);
     saveAdviceRecord(record);
+    renderRiskCompanyMeta(selectedRiskCompanyClues());
+    $("riskCompanyDetailMeta").textContent = `${selectedRiskCompanyClues().length} 条风险点 · ${getCompanyAdviceRecords(context.taxpayer_name).length} 条建议记录`;
     renderAdviceRecords(context.taxpayer_name);
     renderRiskClueList();
     showToast("应对建议已生成并保存到本次会话记录。", "success");
@@ -1139,6 +1280,10 @@ function renderReviewResult(data, options = {}) {
   container.classList.remove("d-none");
   const copyButton = $(options.copyButtonId || "copyReviewBtn");
   if (copyButton) copyButton.classList.remove("d-none");
+  if (options.downloadButtonId) {
+    const downloadButton = $(options.downloadButtonId);
+    if (downloadButton) downloadButton.classList.remove("d-none");
+  }
 }
 
 function tableToText(headers, rows, fields) {
@@ -1236,12 +1381,20 @@ function appendWordReportInfo(parent) {
   appendTextElement(panel, "h3", "Word 报告解析信息");
   const grid = document.createElement("div");
   grid.className = "record-meta-grid";
-  [
+  const context = state.lastWordReviewContext;
+  const items = [
     ["文件名", state.wordReport.filename],
     ["全文长度", `${state.wordReport.text_length} 字`],
     ["识别风险点", `${state.wordReport.risk_points.length} 个`],
     ["解析警告", `${state.wordReport.warnings.length} 条`],
-  ].forEach(([label, value]) => {
+  ];
+  if (context) {
+    items.push(["复核范围", context.scope_label]);
+    if (context.risk_point) {
+      items.push(["当前风险点", `风险点${formatWordRiskPointLabel(context.risk_point)}：${context.risk_point.title}`]);
+    }
+  }
+  items.forEach(([label, value]) => {
     const item = document.createElement("div");
     item.className = "record-meta-item";
     appendTextElement(item, "span", label, "record-meta-label");
@@ -1252,8 +1405,29 @@ function appendWordReportInfo(parent) {
   parent.appendChild(panel);
 }
 
+function formatWordRiskPointPlainText(point) {
+  if (!point) return "";
+  return [
+    `风险点${formatWordRiskPointLabel(point)}：${point.title}`,
+    `风险点具体描述：${point.description || "未识别"}`,
+    `验证情况：${point.verification || "未识别"}`,
+    `政策依据：${point.policy_basis || "未识别"}`,
+    `拟处理意见：${point.proposed_opinion || point.proposed_opinion_status || "未识别"}`,
+  ].join("\n");
+}
+
+function createWordReviewContext(scope, point) {
+  return {
+    scope,
+    scope_label: scope === "risk_point" && point ? `单风险点复核：风险点${formatWordRiskPointLabel(point)}` : "全面复核",
+    risk_point: point || null,
+    created_at: new Date().toLocaleString("zh-CN", { hour12: false }),
+  };
+}
+
 function formatWordSourcePlainText() {
   if (!state.wordReport) return "";
+  const context = state.lastWordReviewContext;
   const lines = [
     "Word 报告解析信息",
     `文件名：${state.wordReport.filename}`,
@@ -1261,8 +1435,14 @@ function formatWordSourcePlainText() {
     `识别风险点：${state.wordReport.risk_points.length} 个`,
     `解析警告：${state.wordReport.warnings.length} 条`,
   ];
+  if (context) {
+    lines.push(`复核范围：${context.scope_label}`, `生成时间：${context.created_at}`);
+  }
   if (state.wordReport.warnings.length) {
     lines.push("", "解析警告", listToText(state.wordReport.warnings));
+  }
+  if (context && context.risk_point) {
+    lines.push("", "当前风险点背景", formatWordRiskPointPlainText(context.risk_point));
   }
   return lines.join("\n");
 }
@@ -1382,9 +1562,11 @@ function renderWordReportParsed(data) {
   state.wordReport = data;
   state.selectedWordRiskPointIndex = null;
   state.lastWordReviewText = "";
+  state.lastWordReviewContext = null;
   $("wordReportSummary").textContent = `已解析 ${data.filename}，全文 ${data.text_length} 字，识别 ${data.risk_points.length} 个风险点`;
   $("wordReportPreview").textContent = data.full_text.length > 4000 ? `${data.full_text.slice(0, 4000)}\n……（全文较长，仅展示前 4000 字；复核仍使用后端保留的完整解析结果）` : data.full_text;
   $("copyWordReviewBtn").classList.add("d-none");
+  $("downloadWordReviewBtn").classList.add("d-none");
   $("wordReviewResult").innerHTML = "";
   $("wordReviewResult").classList.add("d-none");
   clearLoadingPanel("wordReviewLoadingPanel");
@@ -1427,6 +1609,7 @@ function resetWordReport() {
   state.wordReport = null;
   state.selectedWordRiskPointIndex = null;
   state.lastWordReviewText = "";
+  state.lastWordReviewContext = null;
   $("wordReportInput").value = "";
   $("wordReportFileName").textContent = "未选择文件";
   $("wordParsedStage").classList.add("d-none");
@@ -1438,6 +1621,7 @@ function resetWordReport() {
   $("wordReviewResult").innerHTML = "";
   $("wordReviewResult").classList.add("d-none");
   $("copyWordReviewBtn").classList.add("d-none");
+  $("downloadWordReviewBtn").classList.add("d-none");
   clearLoadingPanel("wordReviewLoadingPanel");
 }
 
@@ -1481,6 +1665,8 @@ async function handleWordReview(scope = "full") {
   setLoading(button, spinner, true);
   $("wordReviewResult").classList.add("d-none");
   $("copyWordReviewBtn").classList.add("d-none");
+  $("downloadWordReviewBtn").classList.add("d-none");
+  const reviewContext = createWordReviewContext(scope, point);
   const reviewController = new AbortController();
   state.activeRequests.wordReview = reviewController;
   startLoadingPanel("wordReviewLoadingPanel", {
@@ -1513,9 +1699,11 @@ async function handleWordReview(scope = "full") {
       signal: reviewController.signal,
     });
     clearLoadingPanel("wordReviewLoadingPanel");
+    state.lastWordReviewContext = reviewContext;
     renderReviewResult(data, {
       containerId: "wordReviewResult",
       copyButtonId: "copyWordReviewBtn",
+      downloadButtonId: "downloadWordReviewBtn",
       textTarget: "word",
       sourceRenderer: appendWordReportInfo,
       plainTextFormatter: formatWordReviewPlainText,
@@ -1612,6 +1800,25 @@ async function copyWordReviewResult() {
   }
 }
 
+function downloadWordReviewResult() {
+  if (!state.lastWordReviewText) {
+    showToast("暂无可下载的 Word 复核报告。");
+    return;
+  }
+  const context = state.lastWordReviewContext;
+  const baseName = state.wordReport && state.wordReport.filename ? state.wordReport.filename.replace(/\.[^.]+$/, "") : "Word完整报告";
+  const scopeName = context && context.risk_point ? `风险点${formatWordRiskPointLabel(context.risk_point)}` : "全面复核";
+  const blob = new Blob([state.lastWordReviewText], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${sanitizeFilename(baseName)}_${sanitizeFilename(scopeName)}_AI复核报告.txt`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 function bindIfExists(id, eventName, handler) {
   const element = $(id);
   if (element) {
@@ -1652,6 +1859,13 @@ function bindEvents() {
     if (event.key === "Enter") renderRiskClueList();
   });
   bindIfExists("riskClueSearchInput", "input", renderRiskClueList);
+  bindIfExists("riskCompanyBackBtn", "click", backToRiskCompanyIndex);
+  bindIfExists("riskCompanyAllContextBtn", "click", () => selectRiskAdviceContext("company"));
+  bindIfExists("companyRiskSearchBtn", "click", renderCompanyRiskClueList);
+  bindIfExists("companyRiskSearchInput", "keydown", (event) => {
+    if (event.key === "Enter") renderCompanyRiskClueList();
+  });
+  bindIfExists("companyRiskSearchInput", "input", renderCompanyRiskClueList);
   bindIfExists("riskAdviceBtn", "click", handleRiskAdviceSubmit);
   bindIfExists("riskAdviceClearBtn", "click", clearRiskAdviceContext);
   bindIfExists("riskClueInput", "change", () => {
@@ -1679,6 +1893,7 @@ function bindEvents() {
   bindIfExists("wordReviewAllBtn", "click", () => handleWordReview("full"));
   bindIfExists("wordReviewPointBtn", "click", () => handleWordReview("risk_point"));
   bindIfExists("copyWordReviewBtn", "click", copyWordReviewResult);
+  bindIfExists("downloadWordReviewBtn", "click", downloadWordReviewResult);
   bindIfExists("wordReportInput", "change", () => {
     const file = $("wordReportInput").files[0];
     $("wordReportFileName").textContent = file ? file.name : "未选择文件";

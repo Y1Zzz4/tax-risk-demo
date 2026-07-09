@@ -424,6 +424,66 @@ body.menu-open .side-menu {
   font-size: 13px;
 }
 
+.company-index-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.company-index-card {
+  border: 1px solid #d6e0ea;
+  border-radius: 6px;
+  background: #fff;
+  padding: 14px;
+}
+
+.company-index-card.active {
+  border-color: var(--gov-blue);
+  box-shadow: inset 3px 0 0 var(--gov-blue);
+  background: #f7fbff;
+}
+
+.company-index-card p {
+  margin: 8px 0 0;
+  color: #405468;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.company-risk-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.company-risk-tags span {
+  border: 1px solid #d6e0ea;
+  border-radius: 4px;
+  background: #f8fbfd;
+  color: #405468;
+  padding: 4px 7px;
+  font-size: 12px;
+  line-height: 1.4;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.risk-company-detail {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  padding: 16px;
+}
+
+.detail-toolbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
 .compact-list {
   display: grid;
   gap: 10px;
@@ -1176,6 +1236,7 @@ body.menu-open .side-menu {
 
   .loading-context,
   .record-meta-grid,
+  .company-index-list,
   .stage-list {
     grid-template-columns: 1fr;
   }

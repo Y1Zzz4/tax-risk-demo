@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, Request, UploadFile
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -94,8 +94,19 @@ async def parse_risk_clues(file: UploadFile = File(...)) -> RiskClueParseRespons
 
 @app.post("/api/risk-clues/advice", response_model=ChatResponse)
 async def advise_company_risk(payload: CompanyRiskAdviceRequest) -> ChatResponse:
+    taxpayer_name = payload.taxpayer_name.strip()
+    mismatched_clues = [
+        item.sequence_no
+        for item in payload.risk_clues
+        if item.taxpayer_name.strip() != taxpayer_name
+    ]
+    if mismatched_clues:
+        raise HTTPException(
+            status_code=400,
+            detail=f"应对背景中存在不属于“{taxpayer_name}”的风险点，请重新选择企业后再生成建议。",
+        )
     return deepseek_service.answer_company_risk(
-        payload.taxpayer_name.strip(),
+        taxpayer_name,
         payload.risk_clues,
         question=payload.question.strip(),
     )

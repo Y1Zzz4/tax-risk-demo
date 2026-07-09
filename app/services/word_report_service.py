@@ -150,6 +150,10 @@ def _proposed_opinion_status(text: str | None) -> str:
     return "未识别"
 
 
+def _is_exact_proposed_opinion(text: str | None) -> bool:
+    return bool(text and text.strip() in PROPOSED_OPINION_VALUES)
+
+
 def _parse_risk_points(lines: list[str], warnings: list[str]) -> list[WordRiskPoint]:
     points: list[WordRiskPoint] = []
     current_header: str | None = None
@@ -184,6 +188,8 @@ def _parse_risk_points(lines: list[str], warnings: list[str]) -> list[WordRiskPo
                 warnings.append(f"风险点{point.index}“{point.title}”未识别到“{label}”。")
         if proposed_status == "未识别":
             warnings.append(f"风险点{point.index}“{point.title}”的“拟处理意见”未识别为“风险排除”或“风险确认”。")
+        elif not _is_exact_proposed_opinion(fields["proposed_opinion"]):
+            warnings.append(f"风险点{point.index}“{point.title}”的“拟处理意见”应仅填写“风险排除”或“风险确认”。")
         points.append(point)
 
     for line in lines:
