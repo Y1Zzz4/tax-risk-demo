@@ -2169,19 +2169,19 @@ function renderWordRiskPointList() {
     const viewButton = document.createElement("button");
     viewButton.type = "button";
     viewButton.className = "btn btn-sm btn-outline-primary";
-    viewButton.textContent = "查看详情";
+    viewButton.textContent = "查看风险详情";
     viewButton.addEventListener("click", () => selectWordRiskPoint(point.index));
     actions.appendChild(viewButton);
     if (record) {
       const viewRecordButton = document.createElement("button");
       viewRecordButton.type = "button";
       viewRecordButton.className = "btn btn-sm btn-outline-secondary";
-      viewRecordButton.textContent = "查看复核";
+      viewRecordButton.textContent = "查看复核结果";
       viewRecordButton.addEventListener("click", () => viewWordReviewRecord(record));
       const downloadRecordButton = document.createElement("button");
       downloadRecordButton.type = "button";
       downloadRecordButton.className = "btn btn-sm btn-outline-secondary";
-      downloadRecordButton.textContent = "保存结果";
+      downloadRecordButton.textContent = "保存复核结果";
       downloadRecordButton.addEventListener("click", () => downloadWordReviewRecord(record));
       actions.appendChild(viewRecordButton);
       actions.appendChild(downloadRecordButton);
