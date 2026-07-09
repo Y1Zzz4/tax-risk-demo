@@ -4,8 +4,9 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{{ app_name }}</title>
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="/static/styles.css?v=20260709-2">
+    <link rel="stylesheet" href="/static/styles.css?v=20260709-6">
   </head>
   <body>
     <header class="top-banner">
@@ -262,6 +263,7 @@
                   <span id="reviewBtnLabel">开始复核</span>
                 </button>
                 <button class="btn btn-outline-primary d-none" id="copyReviewBtn">复制复核结果</button>
+                <button class="btn btn-outline-secondary d-none" id="downloadReviewBtn">保存复核结果</button>
               </div>
 
               <div id="reviewLoadingPanel" class="d-none"></div>
@@ -301,6 +303,7 @@
                 <button class="btn btn-outline-primary d-none" id="copyWordReviewBtn">复制复核结果</button>
                 <button class="btn btn-outline-secondary d-none" id="downloadWordReviewBtn">下载复核报告</button>
               </div>
+              <div id="wordFullReviewRecord" class="review-record-panel d-none"></div>
 
               <div class="search-row mb-3">
                 <input class="form-control" id="wordRiskSearchInput" type="search" placeholder="按风险点标题、描述、验证情况、政策依据或拟处理意见检索">
@@ -321,6 +324,7 @@
                   复核当前风险点应对报告
                   </button>
                 </div>
+                <div id="selectedWordReviewRecord" class="review-record-panel d-none"></div>
               </div>
 
               <details class="report-preview-details">
@@ -400,6 +404,6 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="/static/app.js?v=20260709-2"></script>
+    <script src="/static/app.js?v=20260709-6"></script>
   </body>
 </html>

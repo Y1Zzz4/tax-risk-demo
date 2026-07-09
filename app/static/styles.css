@@ -1009,6 +1009,44 @@ body.menu-open .side-menu {
   margin-top: 0;
 }
 
+.review-record-panel {
+  margin: 0 0 16px;
+  border: 1px solid #cfdbe6;
+  border-left: 4px solid var(--gov-blue);
+  border-radius: 6px;
+  background: #f8fbfd;
+  padding: 12px 14px;
+}
+
+.review-record-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.review-record-header strong,
+.review-record-header span {
+  display: block;
+}
+
+.review-record-header strong {
+  color: var(--gov-blue-dark);
+}
+
+.review-record-header span {
+  color: var(--muted);
+  font-size: 13px;
+  text-align: right;
+}
+
+.review-record-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .word-parsed-stage {
   margin-top: 18px;
   border: 1px solid var(--line);

@@ -1,5 +1,5 @@
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -55,6 +55,11 @@ def render_page(request: Request, page: str) -> HTMLResponse:
 @app.get("/")
 async def index() -> RedirectResponse:
     return RedirectResponse(url="/service/smart-response")
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon() -> FileResponse:
+    return FileResponse("app/static/favicon.svg", media_type="image/svg+xml")
 
 
 @app.get("/service/smart-response", response_class=HTMLResponse)
