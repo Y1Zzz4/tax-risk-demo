@@ -114,6 +114,10 @@ class StructureAnalysis(BaseModel):
 class KeywordCheck(BaseModel):
     status: str
     content: str
+    checked_text_length: int = 0
+    self_statement_hits: list[str] = Field(default_factory=list)
+    sensitive_transfer_hits: list[str] = Field(default_factory=list)
+    unfinished_hits: list[str] = Field(default_factory=list)
 
 
 class CompletenessRow(BaseModel):
@@ -131,7 +135,11 @@ class ResponseCompletenessCheck(BaseModel):
 
 class ConclusionRow(BaseModel):
     risk_point: str
+    risk_summary: str = ""
     treatment_measure: str
+    policy_basis: str = ""
+    data_source: str = ""
+    compliance_judgment: Literal["规范", "基本规范", "不规范", "无法判断"] = "无法判断"
     match_status: Literal["匹配", "部分匹配", "未匹配", "无法判断"]
 
 

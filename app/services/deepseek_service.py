@@ -133,6 +133,11 @@ class DeepSeekService:
                         ("匹配", "部分匹配", "未匹配", "无法判断"),
                         "无法判断",
                     )
+                    row["compliance_judgment"] = cls._coerce_literal(
+                        row.get("compliance_judgment"),
+                        ("规范", "基本规范", "不规范", "无法判断"),
+                        "无法判断",
+                    )
 
         support = parsed.get("manual_conclusion_support_check")
         if isinstance(support, dict):
@@ -280,7 +285,7 @@ class DeepSeekService:
         text = source_text or ""
         issues: list[str] = []
 
-        self_statement_hits = cls._find_keyword_hits(texts=[text], terms=("自查", "我公司", "我司", "本公司"))
+        self_statement_hits = cls._find_keyword_hits(texts=[text], terms=("自查", "我公司", "我司", "本公司", "企业表示"))
         if self_statement_hits:
             issues.append(
                 "发现企业自述类表达，可能存在以纳税人自查代替税务机关核实的问题。命中示例："
@@ -310,6 +315,10 @@ class DeepSeekService:
                 + "；".join(unfinished_hits)
             )
 
+        result.keyword_check.checked_text_length = len(text)
+        result.keyword_check.self_statement_hits = self_statement_hits
+        result.keyword_check.sensitive_transfer_hits = inspection_hits
+        result.keyword_check.unfinished_hits = unfinished_hits
         if issues:
             result.keyword_check.status = "发现疑点"
             result.keyword_check.content = "\n".join(f"{index + 1}. {issue}" for index, issue in enumerate(issues))

@@ -33,10 +33,10 @@ app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 
 PAGE_CONFIG = {
-    "smart-response": {"label": "智能应对", "section": "服务模块"},
-    "report-review": {"label": "报告复核", "section": "服务模块"},
-    "policies": {"label": "政策法规", "section": "知识库"},
-    "cases": {"label": "历史案例", "section": "知识库"},
+    "smart-response": {"label": "智能应对"},
+    "report-review": {"label": "报告复核"},
+    "policies": {"label": "政策法规"},
+    "cases": {"label": "历史案例"},
 }
 
 
