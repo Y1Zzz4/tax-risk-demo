@@ -10,6 +10,7 @@ const state = {
   selectedRiskCompany: null,
   selectedRiskAdviceContext: null,
   companyAdviceRecords: {},
+  reportMode: "",
   wordReport: null,
   selectedWordRiskPointIndex: null,
   wordReviewRecords: {
@@ -27,6 +28,106 @@ const state = {
 };
 
 const $ = (id) => document.getElementById(id);
+const DEMO_CACHE_KEY = "tax-risk-demo-local-cache-v1";
+
+function createEmptyDemoCache() {
+  return {
+    version: 1,
+    updated_at: "",
+    smart: {
+      riskClues: [],
+      companyAdviceRecords: {},
+    },
+    report: {
+      mode: "",
+      excel: {
+        reports: [],
+        reviewCache: {},
+        selectedReportKey: "",
+      },
+      word: {
+        wordReport: null,
+        wordReviewRecords: { full: null, riskPoints: {} },
+        selectedWordRiskPointIndex: null,
+      },
+    },
+  };
+}
+
+function readDemoCache() {
+  try {
+    const raw = window.localStorage.getItem(DEMO_CACHE_KEY);
+    if (!raw) return createEmptyDemoCache();
+    const parsed = JSON.parse(raw);
+    const empty = createEmptyDemoCache();
+    return {
+      ...empty,
+      ...parsed,
+      smart: { ...empty.smart, ...(parsed.smart || {}) },
+      report: {
+        ...empty.report,
+        ...(parsed.report || {}),
+        excel: { ...empty.report.excel, ...((parsed.report && parsed.report.excel) || {}) },
+        word: { ...empty.report.word, ...((parsed.report && parsed.report.word) || {}) },
+      },
+    };
+  } catch (error) {
+    console.warn("演示缓存读取失败", error);
+    return createEmptyDemoCache();
+  }
+}
+
+function writeDemoCache(cache) {
+  try {
+    window.localStorage.setItem(DEMO_CACHE_KEY, JSON.stringify({ ...cache, updated_at: new Date().toISOString() }));
+  } catch (error) {
+    console.warn("演示缓存写入失败", error);
+    showToast("本地演示缓存写入失败，可能是浏览器存储空间不足。");
+  }
+}
+
+function saveSmartDemoCache() {
+  const cache = readDemoCache();
+  cache.smart = {
+    riskClues: state.riskClues,
+    companyAdviceRecords: state.companyAdviceRecords,
+  };
+  writeDemoCache(cache);
+}
+
+function clearSmartDemoCache() {
+  const cache = readDemoCache();
+  cache.smart = createEmptyDemoCache().smart;
+  writeDemoCache(cache);
+}
+
+function saveExcelDemoCache() {
+  const cache = readDemoCache();
+  cache.report.mode = "excel";
+  cache.report.excel = {
+    reports: state.reports,
+    reviewCache: state.reviewCache,
+    selectedReportKey: state.selectedReport ? getReportKey(state.selectedReport) : "",
+  };
+  writeDemoCache(cache);
+}
+
+function saveWordDemoCache() {
+  const cache = readDemoCache();
+  cache.report.mode = "word";
+  cache.report.word = {
+    wordReport: state.wordReport,
+    wordReviewRecords: state.wordReviewRecords,
+    selectedWordRiskPointIndex: state.selectedWordRiskPointIndex,
+  };
+  writeDemoCache(cache);
+}
+
+function clearReportDemoCache() {
+  const cache = readDemoCache();
+  cache.report = createEmptyDemoCache().report;
+  writeDemoCache(cache);
+}
 
 function showToast(message, type = "error") {
   const toastId = type === "success" ? "successToast" : "errorToast";
@@ -540,6 +641,7 @@ function resetRiskClues() {
   clearLoadingPanel("riskAdviceLoadingPanel");
   $("companyAdviceRecordsList").innerHTML = "";
   $("companyAdviceRecordsPanel").classList.add("d-none");
+  clearSmartDemoCache();
 }
 
 async function handleParseRiskClues() {
@@ -571,6 +673,7 @@ async function handleParseRiskClues() {
     $("riskClueResetBtn").classList.remove("d-none");
     $("riskClueSearchInput").value = "";
     renderRiskClueList();
+    saveSmartDemoCache();
     clearLoadingPanel("riskAdviceLoadingPanel");
     $("riskAdviceResult").innerHTML = "";
     $("riskAdviceResult").classList.add("d-none");
@@ -605,6 +708,7 @@ function saveAdviceRecord(record) {
     state.companyAdviceRecords[record.taxpayer_name] = [];
   }
   state.companyAdviceRecords[record.taxpayer_name] = [record, ...state.companyAdviceRecords[record.taxpayer_name]].slice(0, 20);
+  saveSmartDemoCache();
 }
 
 function renderAdviceRecords(companyName) {
@@ -1385,6 +1489,7 @@ function viewReportReviewResultFromList(index) {
   $("selectStage").classList.add("d-none");
   $("reviewStage").classList.remove("d-none");
   renderReviewResult(cachedResult, { fromCache: true });
+  saveExcelDemoCache();
   $("reviewResult").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
@@ -1422,12 +1527,14 @@ async function parseExcelReportFile(file, button = null, spinner = null) {
     state.selectedReport = null;
     state.lastReviewText = "";
     state.reviewCache = {};
+    state.reportMode = "excel";
     renderReportList(state.reports);
     if ($("reportExcelPanel")) $("reportExcelPanel").classList.remove("d-none");
     if ($("reportWordPanel")) $("reportWordPanel").classList.add("d-none");
     if ($("reportUnifiedResetBtn")) $("reportUnifiedResetBtn").classList.remove("d-none");
     $("selectStage").classList.remove("d-none");
     $("reviewStage").classList.add("d-none");
+    saveExcelDemoCache();
     showToast("Excel 报告清单解析完成。", "success");
   } catch (error) {
     showToast(error.message);
@@ -1458,6 +1565,7 @@ function selectReport(index) {
   if (cachedResult) {
     renderReviewResult(cachedResult, { fromCache: true });
   }
+  saveExcelDemoCache();
 }
 
 function resetUpload() {
@@ -1473,6 +1581,7 @@ function resetExcelReportState() {
   state.selectedReport = null;
   state.lastReviewText = "";
   state.reviewCache = {};
+  state.reportMode = "";
   $("reportListBody").innerHTML = "";
   $("selectedReportMeta").innerHTML = "";
   $("reviewResult").innerHTML = "";
@@ -2223,6 +2332,7 @@ function saveWordReviewRecord(record) {
   } else {
     state.wordReviewRecords.full = record;
   }
+  saveWordDemoCache();
 }
 
 function getWordReviewRecord(scope, point = null) {
@@ -2723,10 +2833,12 @@ function selectWordRiskPoint(index) {
   renderWordRiskPointList();
   renderSelectedWordRiskPoint();
   renderWordReviewRecordPanels();
+  saveWordDemoCache();
 }
 
 function renderWordReportParsed(data) {
   state.wordReport = data;
+  state.reportMode = "word";
   state.selectedWordRiskPointIndex = null;
   state.wordReviewRecords = { full: null, riskPoints: {} };
   state.lastWordReviewText = "";
@@ -2817,6 +2929,7 @@ async function parseWordReportFile(file, button = null, spinner = null) {
       body: formData,
     });
     renderWordReportParsed(data);
+    saveWordDemoCache();
     showToast("Word 报告解析完成。", "success");
   } catch (error) {
     showToast(error.message);
@@ -2890,6 +3003,7 @@ async function handleWordReview(scope = "full") {
       saveWordReviewRecord(fullRecord);
       setCurrentWordReviewRecord(fullRecord);
       renderWordBatchReviewResult(fullRecord);
+      saveWordDemoCache();
     } else {
       const data = await fetchJson("/api/report/word/review", {
         method: "POST",
@@ -2915,6 +3029,7 @@ async function handleWordReview(scope = "full") {
         plainTextFormatter: () => record.plain_text,
         riskLabel: `风险点${formatWordRiskPointLabel(point)}：${point.title}`,
       });
+      saveWordDemoCache();
     }
     renderWordRiskPointList();
     renderSelectedWordRiskPoint();
@@ -2977,6 +3092,7 @@ async function handleReview() {
     state.reviewCache[getReportKey(state.selectedReport)] = data;
     renderReviewResult(data);
     $("reviewBtnLabel").textContent = "重新复核";
+    saveExcelDemoCache();
   } catch (error) {
     if (error.name === "AbortError") return;
     showLoadingError("reviewLoadingPanel", "报告复核任务未完成", error.message);
@@ -3061,6 +3177,7 @@ function resetUnifiedReportUpload() {
   if ($("reportUnifiedResetBtn")) $("reportUnifiedResetBtn").classList.add("d-none");
   clearLoadingPanel("reviewLoadingPanel");
   clearLoadingPanel("wordReviewLoadingPanel");
+  clearReportDemoCache();
 }
 
 async function handleUnifiedReportUpload() {
@@ -3073,10 +3190,12 @@ async function handleUnifiedReportUpload() {
   $("reportUnifiedFileName").textContent = file.name;
   const lowerName = file.name.toLowerCase();
   if (lowerName.endsWith(".xlsx")) {
+    clearReportDemoCache();
     resetExcelReportState();
     resetWordReport();
     await parseExcelReportFile(file, $("reportFileSelectBtn"), $("reportFileSpinner"));
   } else if (lowerName.endsWith(".docx")) {
+    clearReportDemoCache();
     resetExcelReportState();
     resetWordReport();
     await parseWordReportFile(file, $("reportFileSelectBtn"), $("reportFileSpinner"));
@@ -3092,6 +3211,102 @@ function bindIfExists(id, eventName, handler) {
   if (element) {
     element.addEventListener(eventName, handler);
   }
+}
+
+function restoreSmartDemoCache() {
+  if (!$("smartRiskPanel")) return;
+  const smart = readDemoCache().smart;
+  const riskClues = smart.riskClues || [];
+  const records = smart.companyAdviceRecords || {};
+  if (!riskClues.length && !Object.keys(records).length) return;
+
+  state.riskClues = riskClues;
+  state.companyAdviceRecords = records;
+  state.selectedRiskCompany = null;
+  state.selectedRiskAdviceContext = null;
+  const companyCount = Object.keys(groupRiskCluesByCompany()).length;
+  $("riskClueSummary").textContent = `已恢复 ${riskClues.length} 条风险点，涉及 ${companyCount} 户企业`;
+  $("smartFreePanel").classList.add("d-none");
+  $("smartRiskPanel").classList.remove("d-none");
+  $("riskClueWorkspace").classList.remove("d-none");
+  $("riskCompanyIndexPanel").classList.remove("d-none");
+  $("riskCompanyDetailPanel").classList.add("d-none");
+  $("selectedRiskCompanyPanel").classList.add("d-none");
+  $("riskClueResetBtn").classList.remove("d-none");
+  renderRiskClueList();
+}
+
+function restoreExcelDemoCache(reportCache) {
+  const excel = reportCache.excel || {};
+  if (!excel.reports || !excel.reports.length) return false;
+  state.reportMode = "excel";
+  state.reports = excel.reports;
+  state.reviewCache = excel.reviewCache || {};
+  state.selectedReport = null;
+  state.lastReviewText = "";
+  renderReportList(state.reports);
+  $("reportExcelPanel").classList.remove("d-none");
+  $("reportWordPanel").classList.add("d-none");
+  $("reportUnifiedResetBtn").classList.remove("d-none");
+  $("selectStage").classList.remove("d-none");
+  $("reviewStage").classList.add("d-none");
+
+  if (excel.selectedReportKey && state.reviewCache[excel.selectedReportKey]) {
+    const report = state.reports.find((item) => getReportKey(item) === excel.selectedReportKey);
+    if (report) {
+      state.selectedReport = report;
+      $("selectedReportTitle").textContent = `情况说明预览：${getTaxpayerName(report)}`;
+      renderSelectedReportMeta(report);
+      $("reportPreview").textContent = report.full_text;
+      $("reviewBtnLabel").textContent = "重新复核";
+      $("selectStage").classList.add("d-none");
+      $("reviewStage").classList.remove("d-none");
+      renderReviewResult(state.reviewCache[excel.selectedReportKey], { fromCache: true });
+    }
+  }
+  return true;
+}
+
+function restoreWordDemoCache(reportCache) {
+  const word = reportCache.word || {};
+  if (!word.wordReport) return false;
+  renderWordReportParsed(word.wordReport);
+  state.wordReviewRecords = word.wordReviewRecords || { full: null, riskPoints: {} };
+  state.selectedWordRiskPointIndex = word.selectedWordRiskPointIndex;
+  renderWordRiskPointList();
+  renderSelectedWordRiskPoint();
+  renderWordReviewRecordPanels();
+
+  const fullRecord = getWordReviewRecord("full");
+  if (fullRecord) {
+    setCurrentWordReviewRecord(fullRecord);
+    renderWordBatchReviewResult(fullRecord);
+  } else {
+    const point = selectedWordRiskPoint();
+    const pointRecord = point ? getWordReviewRecord("risk_point", point) : null;
+    if (pointRecord) {
+      setCurrentWordReviewRecord(pointRecord);
+      renderReviewResult(pointRecord.data, {
+        containerId: "wordReviewResult",
+        copyButtonId: "copyWordReviewBtn",
+        downloadButtonId: "downloadWordReviewBtn",
+        textTarget: "word",
+        sourceRenderer: appendWordReportInfo,
+        objectTitle: formatWordReviewObjectTitle(pointRecord.data, pointRecord.context),
+        plainTextFormatter: () => pointRecord.plain_text,
+        riskLabel: point ? `风险点${formatWordRiskPointLabel(point)}：${point.title}` : null,
+      });
+    }
+  }
+  return true;
+}
+
+function restoreReportDemoCache() {
+  if (!$("reportExcelPanel")) return;
+  const reportCache = readDemoCache().report;
+  if (reportCache.mode === "word" && restoreWordDemoCache(reportCache)) return;
+  if (reportCache.mode === "excel" && restoreExcelDemoCache(reportCache)) return;
+  restoreWordDemoCache(reportCache) || restoreExcelDemoCache(reportCache);
 }
 
 function bindEvents() {
@@ -3147,6 +3362,8 @@ function bindEvents() {
 }
 
 function initializePage() {
+  restoreSmartDemoCache();
+  restoreReportDemoCache();
   if ($("policySearchResult")) {
     handleKnowledgeSearch("policies", 3000);
   }
