@@ -68,11 +68,13 @@ class ReportReviewRequest(BaseModel):
 
 class WordRiskPoint(BaseModel):
     index: int
+    label: str | None = None
     title: str
     description: str | None = None
     verification: str | None = None
     policy_basis: str | None = None
     proposed_opinion: str | None = None
+    proposed_opinion_status: Literal["风险排除", "风险确认", "未识别"] = "未识别"
     raw_text: str
 
 
@@ -94,6 +96,8 @@ class WordReportReviewRequest(BaseModel):
     task_summary: str | None = None
     risk_points: list[WordRiskPoint] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
+    review_scope: Literal["full", "risk_point"] = "full"
+    selected_risk_point_index: int | None = None
 
 
 class StructureRow(BaseModel):

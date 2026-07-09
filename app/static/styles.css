@@ -412,6 +412,117 @@ body.menu-open .side-menu {
   overflow-wrap: anywhere;
 }
 
+.search-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
+.list-summary {
+  margin-bottom: 10px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.compact-list {
+  display: grid;
+  gap: 10px;
+  max-height: 460px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  padding: 10px;
+}
+
+.compact-card {
+  border: 1px solid #d6e0ea;
+  border-radius: 6px;
+  background: #fbfcfe;
+  padding: 12px;
+}
+
+.compact-card.active {
+  border-color: var(--gov-blue);
+  box-shadow: inset 3px 0 0 var(--gov-blue);
+  background: #f7fbff;
+}
+
+.compact-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.compact-card-header h3 {
+  margin: 0;
+  color: #263746;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.compact-card-header span {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.7;
+  white-space: nowrap;
+}
+
+.compact-card p {
+  margin: 8px 0 0;
+  color: #405468;
+  font-size: 14px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+.compact-card-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.selected-context-list {
+  display: grid;
+  gap: 10px;
+}
+
+.context-item-block {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fbfcfe;
+  padding: 12px;
+}
+
+.context-item-block strong,
+.context-item-block span {
+  display: block;
+}
+
+.context-item-block strong {
+  color: #263746;
+  font-size: 14px;
+}
+
+.context-item-block span {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.context-item-block p {
+  margin: 8px 0 0;
+  color: #31455a;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
 .advice-record-list {
   display: grid;
   gap: 10px;
@@ -875,6 +986,26 @@ body.menu-open .side-menu {
   vertical-align: top;
 }
 
+.report-preview-details {
+  margin: 16px 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  padding: 12px 14px;
+}
+
+.report-preview-details summary {
+  color: var(--gov-blue);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.report-preview-details .report-preview {
+  margin-top: 12px;
+  max-height: 360px;
+  overflow: auto;
+}
+
 .knowledge-search {
   margin-bottom: 18px;
 }
@@ -1016,6 +1147,7 @@ body.menu-open .side-menu {
 
   .workflow-panel-header,
   .record-toolbar,
+  .compact-card-header,
   .advice-record-item,
   .advice-record-actions {
     align-items: flex-start;
@@ -1050,5 +1182,13 @@ body.menu-open .side-menu {
 
   .knowledge-search-row {
     grid-template-columns: 1fr;
+  }
+
+  .search-row {
+    grid-template-columns: 1fr;
+  }
+
+  .compact-card-header span {
+    white-space: normal;
   }
 }

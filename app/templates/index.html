@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{{ app_name }}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="/static/styles.css?v=20260708-9">
+    <link rel="stylesheet" href="/static/styles.css?v=20260709-1">
   </head>
   <body>
     <header class="top-banner">
@@ -56,108 +56,108 @@
         <div class="module-page" id="chat-pane">
           <div class="section-title">
             <h2>智能应对</h2>
-            <span>上传下发疑点清单，按企业生成风险应对建议</span>
           </div>
 
-          <div class="workflow-panel" id="riskClueUploadPanel">
-            <div class="workflow-panel-header">
-              <div>
-                <h3>下发疑点清单</h3>
-                <span>支持 .xlsx，列顺序为：序号、纳税人名称、疑点名称、风险所属期、风险描述</span>
-              </div>
+          <div class="mode-switch" role="group" aria-label="智能应对方式">
+            <button class="mode-switch-btn active" id="smartFreeModeBtn" type="button">自由提问</button>
+            <button class="mode-switch-btn" id="smartRiskModeBtn" type="button">下发疑点应对</button>
+          </div>
+
+          <div id="smartFreePanel">
+            <div class="mb-3">
+              <label for="questionInput" class="form-label">请输入风险应对或政策理解问题</label>
+              <textarea class="form-control" id="questionInput" rows="7" placeholder="例如：某企业连续多期进项税额偏高，风险应对时应重点核查哪些方向？"></textarea>
             </div>
-            <label class="upload-zone upload-zone-compact" for="riskClueInput">
-              <input type="file" id="riskClueInput" accept=".xlsx" hidden>
-              <strong>上传企业风险疑点清单</strong>
-              <span>解析后可按纳税人查看风险点，并生成应对建议记录</span>
-            </label>
-            <div class="mt-3 action-row">
-              <button class="btn btn-primary" id="riskClueParseBtn">
-                <span class="spinner-border spinner-border-sm d-none" id="riskClueParseSpinner" aria-hidden="true"></span>
-                解析疑点清单
+            <div class="action-row">
+              <button class="btn btn-primary" id="chatSubmitBtn">
+                <span class="spinner-border spinner-border-sm d-none" id="chatSpinner" aria-hidden="true"></span>
+                开始分析
               </button>
-              <button class="btn btn-outline-secondary d-none" id="riskClueResetBtn">清除清单</button>
-              <span class="file-name" id="riskClueFileName">未选择文件</span>
-            </div>
-          </div>
-
-          <div id="riskClueWorkspace" class="risk-clue-workspace d-none">
-            <div class="record-toolbar">
-              <div>
-                <strong id="riskClueSummary">已解析风险疑点清单</strong>
-                <span>选择企业后，可结合下方补充要求生成智能应对建议</span>
-              </div>
-            </div>
-            <div class="table-responsive">
-              <table class="table table-hover align-middle risk-company-table">
-                <thead>
-                  <tr>
-                    <th>纳税人名称</th>
-                    <th>风险点数量</th>
-                    <th>风险所属期</th>
-                    <th>建议记录</th>
-                    <th>操作</th>
-                  </tr>
-                </thead>
-                <tbody id="riskCompanyListBody"></tbody>
-              </table>
+              <button class="btn btn-outline-secondary" id="chatClearBtn">清空输入</button>
             </div>
 
-            <div id="selectedRiskCompanyPanel" class="selected-risk-panel d-none">
-              <div class="section-title section-title-compact">
-                <h2 id="selectedRiskCompanyTitle">企业风险点</h2>
-                <span id="selectedRiskCompanyMeta"></span>
-              </div>
-              <div class="table-responsive">
-                <table class="table table-bordered align-middle risk-clue-table">
-                  <thead>
-                    <tr>
-                      <th>序号</th>
-                      <th>纳税人名称</th>
-                      <th>疑点名称</th>
-                      <th>风险所属期</th>
-                      <th>风险描述</th>
-                    </tr>
-                  </thead>
-                  <tbody id="selectedRiskClueBody"></tbody>
-                </table>
-              </div>
-              <div id="companyAdviceRecordsPanel" class="advice-records d-none">
-                <div class="session-panel-header">
-                  <div>
-                    <strong>企业风险应对建议记录</strong>
-                    <span>本次页面会话内保存，可在线查看或下载保存文件</span>
-                  </div>
+            <div id="chatLoadingPanel" class="d-none"></div>
+            <div id="chatResult" class="result-grid mt-4 d-none"></div>
+
+            <div id="chatHistoryPanel" class="session-panel d-none">
+              <div class="session-panel-header">
+                <div>
+                  <strong>本次会话历史问题</strong>
+                  <span>点击可回填问题，不复用历史回答；刷新页面后自动清空</span>
                 </div>
-                <div id="companyAdviceRecordsList" class="advice-record-list"></div>
+                <button class="btn btn-outline-secondary btn-sm" id="chatClearHistoryBtn">清除历史</button>
               </div>
+              <div id="chatHistoryList" class="history-list"></div>
             </div>
           </div>
 
-          <div class="mb-3">
-            <label for="questionInput" class="form-label">请输入风险应对或政策理解问题</label>
-            <textarea class="form-control" id="questionInput" rows="7" placeholder="可直接提问；也可先上传疑点清单并选择企业，再补充具体分析要求。"></textarea>
-          </div>
-          <div class="action-row">
-            <button class="btn btn-primary" id="chatSubmitBtn">
-              <span class="spinner-border spinner-border-sm d-none" id="chatSpinner" aria-hidden="true"></span>
-              开始分析
-            </button>
-            <button class="btn btn-outline-secondary" id="chatClearBtn">清空输入</button>
-          </div>
-
-          <div id="chatLoadingPanel" class="d-none"></div>
-          <div id="chatResult" class="result-grid mt-4 d-none"></div>
-
-          <div id="chatHistoryPanel" class="session-panel d-none">
-            <div class="session-panel-header">
-              <div>
-                <strong>本次会话历史问题</strong>
-                <span>点击可回填问题，不复用历史回答；刷新页面后自动清空</span>
+          <div id="smartRiskPanel" class="d-none">
+            <div class="workflow-panel" id="riskClueUploadPanel">
+              <div class="workflow-panel-header">
+                <div>
+                  <h3>下发疑点清单</h3>
+                  <span>支持 .xlsx，列顺序为：序号、纳税人名称、疑点名称、风险所属期、风险描述</span>
+                </div>
               </div>
-              <button class="btn btn-outline-secondary btn-sm" id="chatClearHistoryBtn">清除历史</button>
+              <label class="upload-zone upload-zone-compact" for="riskClueInput">
+                <input type="file" id="riskClueInput" accept=".xlsx" hidden>
+                <strong>上传企业风险疑点清单</strong>
+                <span>解析后可检索疑点，并选择单条或企业全部疑点作为应对背景</span>
+              </label>
+              <div class="mt-3 action-row">
+                <button class="btn btn-primary" id="riskClueParseBtn">
+                  <span class="spinner-border spinner-border-sm d-none" id="riskClueParseSpinner" aria-hidden="true"></span>
+                  解析疑点清单
+                </button>
+                <button class="btn btn-outline-secondary d-none" id="riskClueResetBtn">清除清单</button>
+                <span class="file-name" id="riskClueFileName">未选择文件</span>
+              </div>
             </div>
-            <div id="chatHistoryList" class="history-list"></div>
+
+            <div id="riskClueWorkspace" class="risk-clue-workspace d-none">
+              <div class="record-toolbar">
+                <div>
+                  <strong id="riskClueSummary">已解析风险疑点清单</strong>
+                  <span>先检索并选择背景，再生成智能应对建议</span>
+                </div>
+              </div>
+              <div class="search-row mb-3">
+                <input class="form-control" id="riskClueSearchInput" type="search" placeholder="按纳税人名称、疑点名称、所属期或风险描述检索">
+                <button class="btn btn-outline-primary" id="riskClueSearchBtn" type="button">检索</button>
+              </div>
+              <div id="riskClueSearchSummary" class="list-summary"></div>
+              <div id="riskClueList" class="compact-list"></div>
+
+              <div id="selectedRiskCompanyPanel" class="selected-risk-panel d-none">
+                <div class="section-title section-title-compact">
+                  <h2 id="selectedRiskCompanyTitle">已选应对背景</h2>
+                  <span id="selectedRiskCompanyMeta"></span>
+                </div>
+                <div id="selectedRiskClueBody" class="selected-context-list"></div>
+                <div class="mb-3">
+                  <label for="riskAdviceInput" class="form-label">补充分析要求</label>
+                  <textarea class="form-control" id="riskAdviceInput" rows="4" placeholder="可填写具体诉求，例如：重点关注进项抵扣真实性，并给出约谈和资料调取建议。"></textarea>
+                </div>
+                <div class="action-row">
+                  <button class="btn btn-primary" id="riskAdviceBtn">
+                    <span class="spinner-border spinner-border-sm d-none" id="riskAdviceSpinner" aria-hidden="true"></span>
+                    生成应对建议
+                  </button>
+                  <button class="btn btn-outline-secondary" id="riskAdviceClearBtn" type="button">取消选择</button>
+                </div>
+                <div id="riskAdviceLoadingPanel" class="d-none"></div>
+                <div id="riskAdviceResult" class="result-grid mt-4 d-none"></div>
+                <div id="companyAdviceRecordsPanel" class="advice-records d-none">
+                  <div class="session-panel-header">
+                    <div>
+                      <strong>企业风险应对建议记录</strong>
+                      <span>本次页面会话内保存，可在线查看或下载保存文件</span>
+                    </div>
+                  </div>
+                  <div id="companyAdviceRecordsList" class="advice-record-list"></div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
         {% endif %}
@@ -268,43 +268,40 @@
               <div class="record-toolbar">
                 <div>
                   <strong id="wordReportSummary">已解析 Word 报告</strong>
-                  <span>请核对解析出的风险点结构后发起复核</span>
+                  <span>使用检索定位风险点，可全面复核，也可仅复核当前选中的风险点</span>
                 </div>
               </div>
               <div id="wordParseWarnings" class="word-warning-list d-none"></div>
               <div class="record-meta-grid mb-3" id="wordReportMeta"></div>
-              <div class="table-responsive">
-                <table class="table table-bordered align-middle word-risk-table">
-                  <thead>
-                    <tr>
-                      <th>风险点</th>
-                      <th>风险点具体描述</th>
-                      <th>验证情况</th>
-                      <th>政策依据</th>
-                      <th>拟处理意见</th>
-                    </tr>
-                  </thead>
-                  <tbody id="wordRiskPointBody"></tbody>
-                </table>
+
+              <div class="search-row mb-3">
+                <input class="form-control" id="wordRiskSearchInput" type="search" placeholder="按风险点标题、描述、验证情况、政策依据或拟处理意见检索">
+                <button class="btn btn-outline-primary" id="wordRiskSearchBtn" type="button">检索</button>
               </div>
-              <div class="accordion mb-3" id="wordPreviewAccordion">
-                <div class="accordion-item">
-                  <h2 class="accordion-header">
-                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#wordPreviewCollapse">
-                      查看 Word 提取全文
-                    </button>
-                  </h2>
-                  <div id="wordPreviewCollapse" class="accordion-collapse collapse">
-                    <div class="accordion-body">
-                      <pre id="wordReportPreview" class="report-preview"></pre>
-                    </div>
-                  </div>
+              <div id="wordRiskSearchSummary" class="list-summary"></div>
+              <div id="wordRiskPointBody" class="compact-list"></div>
+
+              <div id="selectedWordRiskPanel" class="selected-risk-panel d-none">
+                <div class="section-title section-title-compact">
+                  <h2 id="selectedWordRiskTitle">风险点详情</h2>
+                  <span id="selectedWordRiskMeta"></span>
                 </div>
+                <div id="selectedWordRiskDetail" class="selected-context-list"></div>
               </div>
+
+              <details class="report-preview-details">
+                <summary>查看 Word 提取文本摘要</summary>
+                <pre id="wordReportPreview" class="report-preview"></pre>
+              </details>
+
               <div class="action-row">
-                <button class="btn btn-primary" id="wordReviewBtn">
-                  <span class="spinner-border spinner-border-sm d-none" id="wordReviewSpinner" aria-hidden="true"></span>
-                  开始复核
+                <button class="btn btn-primary" id="wordReviewAllBtn">
+                  <span class="spinner-border spinner-border-sm d-none" id="wordReviewAllSpinner" aria-hidden="true"></span>
+                  复核全体风险点应对报告
+                </button>
+                <button class="btn btn-outline-primary" id="wordReviewPointBtn" disabled>
+                  <span class="spinner-border spinner-border-sm d-none" id="wordReviewPointSpinner" aria-hidden="true"></span>
+                  复核当前风险点应对报告
                 </button>
                 <button class="btn btn-outline-primary d-none" id="copyWordReviewBtn">复制复核结果</button>
               </div>
@@ -380,6 +377,6 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="/static/app.js?v=20260708-9"></script>
+    <script src="/static/app.js?v=20260709-1"></script>
   </body>
 </html>

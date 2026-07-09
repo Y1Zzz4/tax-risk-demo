@@ -18,6 +18,7 @@ FIELD_PATTERNS = {
     "policy_basis": re.compile(r"^政策依据\s*[：:]?\s*(.*)$"),
     "proposed_opinion": re.compile(r"^拟处理意见\s*[：:]?\s*(.*)$"),
 }
+PROPOSED_OPINION_VALUES = ("风险排除", "风险确认")
 
 
 def _local_name(tag: str) -> str:
@@ -131,8 +132,22 @@ def _parse_risk_fields(lines: list[str]) -> dict[str, str | None]:
             continue
         if current_key:
             fields[current_key].append(line)
+        else:
+            fields["description"].append(line)
 
     return {key: _lines_to_text(value) for key, value in fields.items()}
+
+
+def _proposed_opinion_status(text: str | None) -> str:
+    if not text:
+        return "未识别"
+    stripped = text.strip()
+    if stripped in PROPOSED_OPINION_VALUES:
+        return stripped
+    for value in PROPOSED_OPINION_VALUES:
+        if value in stripped:
+            return value
+    return "未识别"
 
 
 def _parse_risk_points(lines: list[str], warnings: list[str]) -> list[WordRiskPoint]:
@@ -144,15 +159,19 @@ def _parse_risk_points(lines: list[str], warnings: list[str]) -> list[WordRiskPo
         if current_header is None:
             return
         header_match = RISK_POINT_PATTERN.match(current_header)
+        label = header_match.group(1).strip() if header_match else None
         title = header_match.group(2).strip() if header_match and header_match.group(2).strip() else current_header
         fields = _parse_risk_fields(current_lines)
+        proposed_status = _proposed_opinion_status(fields["proposed_opinion"])
         point = WordRiskPoint(
             index=len(points) + 1,
+            label=label,
             title=title,
             description=fields["description"],
             verification=fields["verification"],
             policy_basis=fields["policy_basis"],
             proposed_opinion=fields["proposed_opinion"],
+            proposed_opinion_status=proposed_status,
             raw_text="\n".join([current_header, *current_lines]).strip(),
         )
         for field_name, label in (
@@ -163,6 +182,8 @@ def _parse_risk_points(lines: list[str], warnings: list[str]) -> list[WordRiskPo
         ):
             if getattr(point, field_name) is None:
                 warnings.append(f"风险点{point.index}“{point.title}”未识别到“{label}”。")
+        if proposed_status == "未识别":
+            warnings.append(f"风险点{point.index}“{point.title}”的“拟处理意见”未识别为“风险排除”或“风险确认”。")
         points.append(point)
 
     for line in lines:

@@ -133,6 +133,8 @@ async def review_word_report(payload: WordReportReviewRequest) -> ReportReviewRe
         task_summary=payload.task_summary,
         risk_points=payload.risk_points,
         warnings=payload.warnings,
+        review_scope=payload.review_scope,
+        selected_risk_point_index=payload.selected_risk_point_index,
     )
 
 

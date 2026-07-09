@@ -225,14 +225,16 @@ class DeepSeekService:
             return "未识别到结构化风险点。"
         lines = []
         for point in risk_points:
+            risk_label = point.label or str(point.index)
             lines.append(
                 "\n".join(
                     [
-                        f"风险点{point.index}：{point.title}",
+                        f"风险点{risk_label}：{point.title}",
                         f"风险点具体描述：{cls._clip_text(point.description, 1200)}",
                         f"验证情况：{cls._clip_text(point.verification, 1200)}",
                         f"政策依据：{cls._clip_text(point.policy_basis, 1200)}",
-                        f"拟处理意见：{cls._clip_text(point.proposed_opinion, 1200)}",
+                        f"拟处理意见状态：{point.proposed_opinion_status}",
+                        f"拟处理意见原文：{cls._clip_text(point.proposed_opinion, 1200)}",
                     ]
                 )
             )
@@ -293,18 +295,30 @@ class DeepSeekService:
         task_summary: str | None,
         risk_points: list[WordRiskPoint],
         warnings: list[str],
+        review_scope: str = "full",
+        selected_risk_point_index: int | None = None,
     ) -> ReportReviewResponse:
+        review_points = risk_points
+        review_scope_label = "全面复核"
+        if review_scope == "risk_point":
+            review_points = [point for point in risk_points if point.index == selected_risk_point_index]
+            if not review_points:
+                raise HTTPException(status_code=400, detail="未找到需要复核的风险点，请重新选择后再试。")
+            selected_point = review_points[0]
+            review_scope_label = f"单风险点复核：风险点{selected_point.label or selected_point.index}"
+
         content = self._chat_json(
             WORD_REPORT_REVIEW_SYSTEM_PROMPT,
             (
                 "请复核以下 Word 完整风险应对报告。解析警告用于提示文档结构可能缺失或不规范。"
                 "请仅依据这些输入输出指定 JSON。\n\n"
+                f"【复核范围】\n{review_scope_label}\n\n"
                 f"【文件名】\n{filename or '未提供'}\n\n"
                 f"【解析警告】\n{chr(10).join(warnings) if warnings else '未发现解析警告。'}\n\n"
                 f"【应对任务基本情况】\n{self._clip_text(basic_info, 5000)}\n\n"
                 f"【任务具体情况总体概括】\n{self._clip_text(task_summary, 5000)}\n\n"
-                f"【结构化风险点】\n{self._format_word_risk_points(risk_points)}\n\n"
-                f"【全文节选】\n{self._clip_text(full_text, 30000)}"
+                f"【结构化风险点】\n{self._format_word_risk_points(review_points)}\n\n"
+                f"【全文节选】\n{self._clip_text(full_text, 30000 if review_scope == 'full' else 10000)}"
             ),
             temperature=0.12,
         )
