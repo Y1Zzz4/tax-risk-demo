@@ -6,7 +6,7 @@
     <title>{{ app_name }}</title>
     <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="/static/styles.css?v=20260709-6">
+    <link rel="stylesheet" href="/static/styles.css?v=20260709-8">
   </head>
   <body>
     <header class="top-banner">
@@ -20,12 +20,6 @@
       </div>
     </header>
 
-    <button class="menu-toggle-btn" id="menuToggleBtn" type="button" aria-controls="sideMenu" aria-expanded="false">
-      <span class="menu-toggle-icon"></span>
-      <span>菜单</span>
-    </button>
-    <div class="menu-backdrop" id="menuBackdrop"></div>
-
     <main class="container-xxl main-shell">
       <div class="workspace-layout">
         <aside class="side-menu" id="sideMenu" aria-label="系统菜单">
@@ -34,7 +28,6 @@
               <strong>功能导航</strong>
               <span>{{ page_config[active_page].section }}</span>
             </div>
-            <button class="menu-close-btn" id="menuCloseBtn" type="button" aria-label="关闭菜单">×</button>
           </div>
           <div class="menu-group">
             <div class="menu-group-title">服务模块</div>
@@ -59,11 +52,6 @@
             <h2>智能应对</h2>
           </div>
 
-          <div class="mode-switch" role="group" aria-label="智能应对方式">
-            <button class="mode-switch-btn active" id="smartFreeModeBtn" type="button">自由提问</button>
-            <button class="mode-switch-btn" id="smartRiskModeBtn" type="button">下发疑点应对</button>
-          </div>
-
           <div id="smartFreePanel">
             <div class="mb-3">
               <label for="questionInput" class="form-label">请输入风险应对或政策理解问题</label>
@@ -74,7 +62,13 @@
                 <span class="spinner-border spinner-border-sm d-none" id="chatSpinner" aria-hidden="true"></span>
                 开始分析
               </button>
+              <button class="btn btn-outline-primary" id="riskClueParseBtn" type="button">
+                <span class="spinner-border spinner-border-sm d-none" id="riskClueParseSpinner" aria-hidden="true"></span>
+                上传下发疑点清单
+              </button>
+              <input type="file" id="riskClueInput" accept=".xlsx" hidden>
               <button class="btn btn-outline-secondary" id="chatClearBtn">清空输入</button>
+              <span class="file-name" id="riskClueFileName">未选择文件</span>
             </div>
 
             <div id="chatLoadingPanel" class="d-none"></div>
@@ -93,26 +87,12 @@
           </div>
 
           <div id="smartRiskPanel" class="d-none">
-            <div class="workflow-panel" id="riskClueUploadPanel">
-              <div class="workflow-panel-header">
-                <div>
-                  <h3>下发疑点清单</h3>
-                  <span>支持 .xlsx，列顺序为：序号、纳税人名称、疑点名称、风险所属期、风险描述</span>
-                </div>
+            <div class="module-toolbar">
+              <div>
+                <h3>疑点应对</h3>
+                <span>以企业为索引管理下发疑点，按风险点生成应对建议</span>
               </div>
-              <label class="upload-zone upload-zone-compact" for="riskClueInput">
-                <input type="file" id="riskClueInput" accept=".xlsx" hidden>
-                <strong>上传企业风险疑点清单</strong>
-                <span>解析后先进入企业索引，再查看该企业风险点和历史建议</span>
-              </label>
-              <div class="mt-3 action-row">
-                <button class="btn btn-primary" id="riskClueParseBtn">
-                  <span class="spinner-border spinner-border-sm d-none" id="riskClueParseSpinner" aria-hidden="true"></span>
-                  解析疑点清单
-                </button>
-                <button class="btn btn-outline-secondary d-none" id="riskClueResetBtn">清除清单</button>
-                <span class="file-name" id="riskClueFileName">未选择文件</span>
-              </div>
+              <button class="btn btn-outline-secondary btn-sm d-none" id="riskClueResetBtn">返回智能提问</button>
             </div>
 
             <div id="riskClueWorkspace" class="risk-clue-workspace d-none">
@@ -128,7 +108,21 @@
                   <button class="btn btn-outline-primary" id="riskClueSearchBtn" type="button">检索</button>
                 </div>
                 <div id="riskClueSearchSummary" class="list-summary"></div>
-                <div id="riskCompanyList" class="company-index-list"></div>
+                <div class="table-responsive">
+                  <table class="table table-hover align-middle company-index-table">
+                    <thead>
+                      <tr>
+                        <th>纳税人名称</th>
+                        <th>风险点数量</th>
+                        <th>风险所属期</th>
+                        <th>主要疑点</th>
+                        <th>应对记录</th>
+                        <th>操作</th>
+                      </tr>
+                    </thead>
+                    <tbody id="riskCompanyList"></tbody>
+                  </table>
+                </div>
               </div>
 
               <div id="riskCompanyDetailPanel" class="risk-company-detail d-none">
@@ -190,31 +184,27 @@
             <span>支持 Excel 清单复核和 Word 完整报告复核</span>
           </div>
 
-          <div class="mode-switch" role="group" aria-label="报告复核方式">
-            <button class="mode-switch-btn active" id="reportExcelModeBtn" type="button">Excel 清单复核</button>
-            <button class="mode-switch-btn" id="reportWordModeBtn" type="button">Word 完整报告复核</button>
+          <div id="reportUnifiedUploadPanel">
+            <label class="upload-zone" for="reportFileInput">
+              <input type="file" id="reportFileInput" accept=".xlsx,.docx" hidden>
+              <strong>请上传待复核报告文件</strong>
+              <span>支持 Excel 报告清单（.xlsx）和 Word 完整报告（.docx）；系统将根据文件类型进入对应复核页面</span>
+            </label>
+            <div class="mt-3 action-row">
+              <button class="btn btn-primary" id="reportFileSelectBtn" type="button">
+                <span class="spinner-border spinner-border-sm d-none" id="reportFileSpinner" aria-hidden="true"></span>
+                选择并解析文件
+              </button>
+              <button class="btn btn-outline-secondary d-none" id="reportUnifiedResetBtn" type="button">重新上传</button>
+              <span class="file-name" id="reportUnifiedFileName">未选择文件</span>
+            </div>
           </div>
 
-          <div id="reportExcelPanel">
-            <div id="uploadStage">
-              <label class="upload-zone" for="excelInput">
-                <input type="file" id="excelInput" accept=".xlsx" hidden>
-                <strong>请上传风险应对报告清单</strong>
-                <span>支持 .xlsx 格式，系统将读取“情况说明”，并提取“疑点信息”“人工认定结果”等参考字段</span>
-              </label>
-              <div class="mt-3">
-                <button class="btn btn-primary" id="parseBtn">
-                  <span class="spinner-border spinner-border-sm d-none" id="parseSpinner" aria-hidden="true"></span>
-                  解析报告列表
-                </button>
-                <span class="file-name" id="selectedFileName">未选择文件</span>
-              </div>
-            </div>
-
+          <div id="reportExcelPanel" class="d-none">
             <div id="selectStage" class="d-none">
               <div class="d-flex align-items-center justify-content-between mb-3">
                 <h3 class="sub-heading">请选择一条报告</h3>
-                <button class="btn btn-outline-secondary btn-sm" id="resetUploadBtn">重新上传</button>
+                <button class="btn btn-outline-secondary btn-sm" id="resetUploadBtn">返回上传</button>
               </div>
               <div class="table-responsive">
                 <table class="table table-hover align-middle">
@@ -272,20 +262,6 @@
           </div>
 
           <div id="reportWordPanel" class="d-none">
-            <label class="upload-zone" for="wordReportInput">
-              <input type="file" id="wordReportInput" accept=".docx,.doc" hidden>
-              <strong>请上传 Word 完整报告</strong>
-              <span>支持 .docx，系统将解析“应对任务基本情况”“任务具体情况”和风险点结构</span>
-            </label>
-            <div class="mt-3 action-row">
-              <button class="btn btn-primary" id="wordParseBtn">
-                <span class="spinner-border spinner-border-sm d-none" id="wordParseSpinner" aria-hidden="true"></span>
-                解析 Word 报告
-              </button>
-              <button class="btn btn-outline-secondary d-none" id="wordResetBtn">重新上传</button>
-              <span class="file-name" id="wordReportFileName">未选择文件</span>
-            </div>
-
             <div id="wordParsedStage" class="word-parsed-stage d-none">
               <div class="record-toolbar">
                 <div>
@@ -356,7 +332,10 @@
               </button>
             </div>
           </div>
-          <div id="policySearchResult" class="knowledge-result"></div>
+          <div class="knowledge-workspace">
+            <aside class="knowledge-index" id="policyTreeIndex"></aside>
+            <div id="policySearchResult" class="knowledge-result"></div>
+          </div>
         </div>
         {% endif %}
 
@@ -404,6 +383,6 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="/static/app.js?v=20260709-6"></script>
+    <script src="/static/app.js?v=20260709-8"></script>
   </body>
 </html>

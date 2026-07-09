@@ -177,7 +177,7 @@ class ReportReviewResponse(BaseModel):
 
 class KnowledgeSearchRequest(BaseModel):
     query: str = Field("", max_length=200)
-    limit: int = Field(20, ge=1, le=50)
+    limit: int = Field(20, ge=1, le=3000)
 
 
 class KnowledgeSearchItem(BaseModel):

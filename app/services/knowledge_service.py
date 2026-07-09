@@ -31,6 +31,7 @@ CONTENT_ALIASES: dict[KnowledgeCategory, tuple[str, ...]] = {
 }
 
 POLICY_FORWARD_FILL_COLUMNS = ("类型",)
+_KNOWLEDGE_CACHE: dict[KnowledgeCategory, tuple[float, pd.DataFrame]] = {}
 
 
 def _normalize_column_name(value: object) -> str:
@@ -94,6 +95,26 @@ def _build_item(category: KnowledgeCategory, row_index: int, fields: dict[str, s
     )
 
 
+def _load_knowledge_dataframe(category: KnowledgeCategory, source_path: Path, category_name: str) -> pd.DataFrame:
+    mtime = source_path.stat().st_mtime
+    cached = _KNOWLEDGE_CACHE.get(category)
+    if cached and cached[0] == mtime:
+        return cached[1]
+
+    try:
+        df = pd.read_excel(source_path, sheet_name=0, engine="openpyxl", dtype=object)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"{category_name}知识库 Excel 解析失败：{exc}") from exc
+
+    if category == "policies":
+        for column in POLICY_FORWARD_FILL_COLUMNS:
+            if column in df.columns:
+                df[column] = df[column].ffill()
+
+    _KNOWLEDGE_CACHE[category] = (mtime, df)
+    return df
+
+
 def search_knowledge(category: KnowledgeCategory, query: str, limit: int) -> KnowledgeSearchResponse:
     if category not in KNOWLEDGE_FILES:
         raise HTTPException(status_code=404, detail="未知知识库类型。")
@@ -112,16 +133,7 @@ def search_knowledge(category: KnowledgeCategory, query: str, limit: int) -> Kno
             message=f"未找到{category_name}知识库文件，请将 Excel 放到 {source_path}。",
         )
 
-    try:
-        df = pd.read_excel(source_path, sheet_name=0, engine="openpyxl", dtype=object)
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"{category_name}知识库 Excel 解析失败：{exc}") from exc
-
-    if category == "policies":
-        for column in POLICY_FORWARD_FILL_COLUMNS:
-            if column in df.columns:
-                df[column] = df[column].ffill()
-
+    df = _load_knowledge_dataframe(category, source_path, category_name)
     total_rows = len(df)
     tokens = [part.lower() for part in query.strip().split() if part.strip()]
     matched: list[tuple[int, int, dict[str, str]]] = []

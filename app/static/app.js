@@ -18,6 +18,11 @@ const state = {
   },
   lastWordReviewText: "",
   lastWordReviewContext: null,
+  policyResults: null,
+  policyFilter: {
+    type: "",
+    kind: "",
+  },
 };
 
 const $ = (id) => document.getElementById(id);
@@ -44,8 +49,8 @@ async function fetchJson(url, options = {}) {
 }
 
 function setLoading(button, spinner, isLoading) {
-  button.disabled = isLoading;
-  spinner.classList.toggle("d-none", !isLoading);
+  if (button) button.disabled = isLoading;
+  if (spinner) spinner.classList.toggle("d-none", !isLoading);
 }
 
 function formatElapsed(seconds) {
@@ -218,6 +223,7 @@ function renderList(parent, items) {
 function renderChatResult(data, containerId = "chatResult") {
   const container = $(containerId);
   container.innerHTML = "";
+  container.className = "result-grid mt-4";
   const answerSummary = data.answer_summary || data.question_understanding || "未返回明确总结";
   const referenceMaterials = data.reference_materials || data.supplementary_materials;
 
@@ -314,37 +320,34 @@ function renderRiskClueList() {
     : `展示全部 ${companies.length} 户企业，共 ${state.riskClues.length} 条风险疑点`;
 
   if (!companies.length) {
-    appendTextElement(list, "div", "未检索到匹配企业，请调整关键词。", "empty-state");
+    const row = document.createElement("tr");
+    const cell = appendTextElement(row, "td", "未检索到匹配企业，请调整关键词。", "empty-state");
+    cell.colSpan = 6;
+    list.appendChild(row);
     return;
   }
 
   companies.forEach(([companyName, clues]) => {
-    const card = document.createElement("article");
-    card.className = "company-index-card";
-    if (state.selectedRiskCompany === companyName) {
-      card.classList.add("active");
-    }
-    const header = document.createElement("div");
-    header.className = "compact-card-header";
-    appendTextElement(header, "h3", companyName);
-    appendTextElement(header, "span", `${clues.length} 条风险点`);
-    card.appendChild(header);
-    appendTextElement(card, "p", `风险所属期：${formatRiskPeriods(clues)}；本次会话建议记录：${getCompanyAdviceRecords(companyName).length} 条`);
-    const tags = document.createElement("div");
-    tags.className = "company-risk-tags";
-    clues.slice(0, 4).forEach((clue) => appendTextElement(tags, "span", clue.risk_name || "未提供疑点名称"));
-    if (clues.length > 4) appendTextElement(tags, "span", `还有 ${clues.length - 4} 条`);
-    card.appendChild(tags);
-    const actions = document.createElement("div");
-    actions.className = "compact-card-actions";
+    const row = document.createElement("tr");
+    if (state.selectedRiskCompany === companyName) row.classList.add("active-row");
+    appendTextElement(row, "td", companyName);
+    appendTextElement(row, "td", `${clues.length} 条`);
+    appendTextElement(row, "td", formatRiskPeriods(clues));
+    const riskCell = document.createElement("td");
+    const riskNames = clues.map((clue) => clue.risk_name || "未提供疑点名称");
+    riskCell.textContent = riskNames.slice(0, 3).join("；") + (riskNames.length > 3 ? `；另 ${riskNames.length - 3} 条` : "");
+    riskCell.title = riskNames.join("；");
+    row.appendChild(riskCell);
+    appendTextElement(row, "td", `${getCompanyAdviceRecords(companyName).length} 条`);
+    const actions = document.createElement("td");
     const openButton = document.createElement("button");
     openButton.type = "button";
     openButton.className = "btn btn-sm btn-outline-primary";
-    openButton.textContent = "进入企业";
+    openButton.textContent = "查看风险点";
     openButton.addEventListener("click", () => selectRiskCompany(companyName));
     actions.appendChild(openButton);
-    card.appendChild(actions);
-    list.appendChild(card);
+    row.appendChild(actions);
+    list.appendChild(row);
   });
 }
 
@@ -507,12 +510,18 @@ function clearRiskAdviceContext() {
 }
 
 function resetRiskClues() {
+  if (state.activeRequests.riskAdvice) {
+    state.activeRequests.riskAdvice.abort();
+    clearActiveRequest("riskAdvice");
+  }
   state.riskClues = [];
   state.selectedRiskCompany = null;
   state.selectedRiskAdviceContext = null;
   state.companyAdviceRecords = {};
-  $("riskClueInput").value = "";
-  $("riskClueFileName").textContent = "未选择文件";
+  if ($("riskClueInput")) $("riskClueInput").value = "";
+  if ($("riskClueFileName")) $("riskClueFileName").textContent = "未选择文件";
+  if ($("smartFreePanel")) $("smartFreePanel").classList.remove("d-none");
+  if ($("smartRiskPanel")) $("smartRiskPanel").classList.add("d-none");
   $("riskClueWorkspace").classList.add("d-none");
   $("riskCompanyIndexPanel").classList.remove("d-none");
   $("riskCompanyDetailPanel").classList.add("d-none");
@@ -552,6 +561,8 @@ async function handleParseRiskClues() {
     state.selectedRiskAdviceContext = null;
     state.companyAdviceRecords = {};
     $("riskClueSummary").textContent = `已解析 ${data.total_count} 条风险点，涉及 ${data.company_count} 户企业`;
+    $("smartFreePanel").classList.add("d-none");
+    $("smartRiskPanel").classList.remove("d-none");
     $("riskClueWorkspace").classList.remove("d-none");
     $("riskCompanyIndexPanel").classList.remove("d-none");
     $("riskCompanyDetailPanel").classList.add("d-none");
@@ -570,9 +581,10 @@ async function handleParseRiskClues() {
   }
 }
 
-function createAdviceRecord(result, question) {
+function createAdviceRecord(result, question, options = {}) {
   const now = new Date();
   const context = state.selectedRiskAdviceContext;
+  const riskResults = options.riskResults || [];
   return {
     id: `${now.getTime()}`,
     created_at: now.toLocaleString("zh-CN", { hour12: false }),
@@ -582,6 +594,7 @@ function createAdviceRecord(result, question) {
     context_scope: context.type === "company" ? "企业全部疑点" : "单条疑点",
     question: question || "根据上传下发疑点清单生成企业风险应对建议",
     risk_clues: context.risk_clues,
+    risk_results: riskResults,
     result,
   };
 }
@@ -609,7 +622,8 @@ function renderAdviceRecords(companyName) {
     item.className = "advice-record-item";
     const info = document.createElement("div");
     appendTextElement(info, "strong", record.context_title || `建议记录 ${records.length - index}`);
-    appendTextElement(info, "span", `${record.created_at} · ${record.risk_clues.length} 条风险点`);
+    const resultCount = record.risk_results && record.risk_results.length ? record.risk_results.length : record.risk_clues.length;
+    appendTextElement(info, "span", `${record.created_at} · ${resultCount} 条风险点 · ${record.context_scope || "应对建议"}`);
     appendTextElement(info, "p", record.question);
     const actions = document.createElement("div");
     actions.className = "advice-record-actions";
@@ -648,7 +662,11 @@ function viewAdviceRecord(record) {
   renderSelectedRiskContext();
   renderCompanyRiskClueList();
   renderAdviceRecords(record.taxpayer_name);
-  renderChatResult(record.result, "riskAdviceResult");
+  if (record.risk_results && record.risk_results.length) {
+    renderRiskAdviceBatchResult(record);
+  } else {
+    renderChatResult(record.result, "riskAdviceResult");
+  }
   $("riskAdviceInput").value = record.question;
   $("riskAdviceResult").scrollIntoView({ behavior: "smooth", block: "start" });
 }
@@ -666,8 +684,7 @@ function formatRiskCluesPlainText(clues) {
 }
 
 function formatAdviceRecordPlainText(record) {
-  const result = record.result;
-  return [
+  const baseLines = [
     `纳税人名称：${record.taxpayer_name}`,
     `生成时间：${record.created_at}`,
     `背景范围：${record.context_scope || (record.context_type === "single" ? "单条疑点" : "企业全部疑点")}`,
@@ -677,6 +694,43 @@ function formatAdviceRecordPlainText(record) {
     "下发疑点清单",
     formatRiskCluesPlainText(record.risk_clues),
     "",
+  ];
+
+  if (record.risk_results && record.risk_results.length) {
+    record.risk_results.forEach((item, index) => {
+      const result = item.result || {};
+      baseLines.push(
+        `风险点${index + 1}：${item.risk_clue.risk_name || "未提供疑点名称"}`,
+        `序号：${item.risk_clue.sequence_no}`,
+        `风险所属期：${item.risk_clue.risk_period || "未提供"}`,
+        `风险描述：${item.risk_clue.risk_description || "未提供"}`,
+        "",
+        "回答总结",
+        result.answer_summary || "",
+        "",
+        "问题理解",
+        result.question_understanding || "",
+        "",
+        "建议核查方向",
+        listToText(result.verification_directions),
+        "",
+        "建议应对措施",
+        listToText(result.suggested_measures),
+        "",
+        "参考材料",
+        listToText(result.reference_materials || result.supplementary_materials),
+        "",
+        "风险提示",
+        result.risk_notice || "",
+        "",
+      );
+    });
+    return baseLines.join("\n");
+  }
+
+  const result = record.result || {};
+  return [
+    ...baseLines,
     "回答总结",
     result.answer_summary || "",
     "",
@@ -745,6 +799,119 @@ function appendKnowledgeFields(parent, fields) {
   parent.appendChild(details);
 }
 
+function getPolicyType(item) {
+  return (item.fields && item.fields["类型"]) || "未分类";
+}
+
+function getPolicyKind(item) {
+  return (item.fields && item.fields["种类"]) || "未分类";
+}
+
+function renderKnowledgeCards(container, results) {
+  const list = document.createElement("div");
+  list.className = "knowledge-list";
+  results.forEach((item) => {
+    const card = document.createElement("article");
+    card.className = "knowledge-card";
+    appendTextElement(card, "h3", item.title);
+    if (item.subtitle) appendTextElement(card, "div", item.subtitle, "knowledge-subtitle");
+    appendTextElement(card, "p", item.content_preview);
+    appendKnowledgeFields(card, item.fields);
+    list.appendChild(card);
+  });
+  container.appendChild(list);
+}
+
+function renderPolicyTreeIndex(results = null) {
+  const index = $("policyTreeIndex");
+  if (!index) return;
+  const items = results || (state.policyResults && state.policyResults.results) || [];
+  index.innerHTML = "";
+  appendTextElement(index, "h3", "政策索引");
+
+  const allButton = document.createElement("button");
+  allButton.type = "button";
+  allButton.className = !state.policyFilter.type && !state.policyFilter.kind ? "policy-tree-button active" : "policy-tree-button";
+  allButton.textContent = `全部政策（${items.length}）`;
+  allButton.addEventListener("click", () => {
+    state.policyFilter = { type: "", kind: "" };
+    renderPolicyResultList();
+    renderPolicyTreeIndex();
+  });
+  index.appendChild(allButton);
+
+  const groups = items.reduce((acc, item) => {
+    const type = getPolicyType(item);
+    const kind = getPolicyKind(item);
+    if (!acc[type]) acc[type] = {};
+    if (!acc[type][kind]) acc[type][kind] = 0;
+    acc[type][kind] += 1;
+    return acc;
+  }, {});
+
+  Object.entries(groups)
+    .sort(([left], [right]) => left.localeCompare(right, "zh-Hans-CN"))
+    .forEach(([type, kinds]) => {
+      const typeButton = document.createElement("button");
+      typeButton.type = "button";
+      typeButton.className = state.policyFilter.type === type && !state.policyFilter.kind ? "policy-tree-button active" : "policy-tree-button";
+      const typeCount = Object.values(kinds).reduce((sum, value) => sum + value, 0);
+      typeButton.textContent = `${type}（${typeCount}）`;
+      typeButton.addEventListener("click", () => {
+        state.policyFilter = { type, kind: "" };
+        renderPolicyResultList();
+        renderPolicyTreeIndex();
+      });
+      index.appendChild(typeButton);
+
+      const kindList = document.createElement("div");
+      kindList.className = "policy-tree-children";
+      Object.entries(kinds)
+        .sort(([left], [right]) => left.localeCompare(right, "zh-Hans-CN"))
+        .forEach(([kind, count]) => {
+          const kindButton = document.createElement("button");
+          kindButton.type = "button";
+          kindButton.className =
+            state.policyFilter.type === type && state.policyFilter.kind === kind ? "policy-tree-button child active" : "policy-tree-button child";
+          kindButton.textContent = `${kind}（${count}）`;
+          kindButton.addEventListener("click", () => {
+            state.policyFilter = { type, kind };
+            renderPolicyResultList();
+            renderPolicyTreeIndex();
+          });
+          kindList.appendChild(kindButton);
+        });
+      index.appendChild(kindList);
+    });
+}
+
+function renderPolicyResultList() {
+  const container = $("policySearchResult");
+  if (!container || !state.policyResults) return;
+  const data = state.policyResults;
+  const filter = state.policyFilter;
+  const filtered = data.results.filter((item) => {
+    if (filter.type && getPolicyType(item) !== filter.type) return false;
+    if (filter.kind && getPolicyKind(item) !== filter.kind) return false;
+    return true;
+  });
+
+  container.innerHTML = "";
+  const status = document.createElement("div");
+  status.className = data.exists ? "knowledge-status" : "knowledge-status warning";
+  appendTextElement(status, "strong", filter.type ? `当前索引：${filter.type}${filter.kind ? ` / ${filter.kind}` : ""}` : data.message);
+  if (data.exists) {
+    appendTextElement(status, "span", `展示 ${filtered.length} 条，当前检索范围 ${data.results.length} 条，数据总记录数 ${data.total_rows}`);
+  }
+  container.appendChild(status);
+
+  if (!data.exists || !filtered.length) {
+    appendTextElement(container, "div", data.exists ? "当前索引下无政策记录，请调整索引或关键词。" : "知识库文件就绪后可直接检索。", "empty-state");
+    return;
+  }
+  renderKnowledgeCards(container, filtered);
+}
+
 function renderKnowledgeResult(resultId, data) {
   const container = $(resultId);
   container.innerHTML = "";
@@ -759,32 +926,35 @@ function renderKnowledgeResult(resultId, data) {
 
   if (!data.exists || !data.results.length) {
     appendTextElement(container, "div", data.exists ? "未检索到匹配记录，请调整关键词后重试。" : "知识库文件就绪后可直接检索。", "empty-state");
+    if (resultId === "policySearchResult") {
+      state.policyResults = data;
+      state.policyFilter = { type: "", kind: "" };
+      renderPolicyTreeIndex(data.results);
+    }
     return;
   }
 
-  const list = document.createElement("div");
-  list.className = "knowledge-list";
-  data.results.forEach((item) => {
-    const card = document.createElement("article");
-    card.className = "knowledge-card";
-    appendTextElement(card, "h3", item.title);
-    if (item.subtitle) appendTextElement(card, "div", item.subtitle, "knowledge-subtitle");
-    appendTextElement(card, "p", item.content_preview);
-    appendKnowledgeFields(card, item.fields);
-    list.appendChild(card);
-  });
-  container.appendChild(list);
+  if (resultId === "policySearchResult") {
+    state.policyResults = data;
+    state.policyFilter = { type: "", kind: "" };
+    renderPolicyTreeIndex(data.results);
+    renderPolicyResultList();
+    return;
+  }
+
+  renderKnowledgeCards(container, data.results);
 }
 
-async function handleKnowledgeSearch(category) {
+async function handleKnowledgeSearch(category, limit = null) {
   const config = knowledgeSearchConfig[category];
   const query = $(config.inputId).value.trim();
   setLoading($(config.buttonId), $(config.spinnerId), true);
   try {
+    const requestLimit = limit || (category === "policies" ? 3000 : 20);
     const data = await fetchJson(config.endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query, limit: 20 }),
+      body: JSON.stringify({ query, limit: requestLimit }),
     });
     renderKnowledgeResult(config.resultId, data);
   } catch (error) {
@@ -892,12 +1062,102 @@ function resetChat() {
   $("chatResult").classList.add("d-none");
 }
 
-function switchSmartResponseMode(mode) {
-  const isRiskMode = mode === "risk";
-  $("smartFreePanel").classList.toggle("d-none", isRiskMode);
-  $("smartRiskPanel").classList.toggle("d-none", !isRiskMode);
-  $("smartFreeModeBtn").classList.toggle("active", !isRiskMode);
-  $("smartRiskModeBtn").classList.toggle("active", isRiskMode);
+async function requestRiskAdvice(taxpayerName, riskClues, question, signal) {
+  return fetchJson("/api/risk-clues/advice", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ taxpayer_name: taxpayerName, risk_clues: riskClues, question }),
+    signal,
+  });
+}
+
+function renderRiskAdviceBatchDetail(item, index) {
+  const detail = $("riskAdviceBatchDetail");
+  if (!detail) return;
+  detail.innerHTML = "";
+  const clue = item.risk_clue;
+  const header = document.createElement("section");
+  header.className = "source-record-panel";
+  appendTextElement(header, "h3", `风险点${index + 1}：${clue.risk_name || "未提供疑点名称"}`);
+  const grid = document.createElement("div");
+  grid.className = "record-meta-grid";
+  [
+    ["序号", clue.sequence_no],
+    ["纳税人名称", clue.taxpayer_name],
+    ["风险所属期", clue.risk_period || "未提供"],
+  ].forEach(([label, value]) => {
+    const meta = document.createElement("div");
+    meta.className = "record-meta-item";
+    appendTextElement(meta, "span", label, "record-meta-label");
+    appendTextElement(meta, "span", value, "record-meta-value");
+    grid.appendChild(meta);
+  });
+  header.appendChild(grid);
+  appendTextElement(header, "p", clue.risk_description || "未提供风险描述");
+  detail.appendChild(header);
+
+  const resultContainer = document.createElement("div");
+  resultContainer.id = "riskAdviceBatchDetailResult";
+  resultContainer.className = "result-grid mt-4";
+  detail.appendChild(resultContainer);
+  renderChatResult(item.result, "riskAdviceBatchDetailResult");
+  detail.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function renderRiskAdviceBatchResult(record) {
+  const container = $("riskAdviceResult");
+  container.innerHTML = "";
+  container.className = "review-result mt-4";
+
+  const summary = document.createElement("section");
+  summary.className = "review-summary-panel";
+  appendTextElement(summary, "h3", "企业全部疑点应对结果");
+  appendTextElement(
+    summary,
+    "p",
+    `已按 ${record.risk_results.length} 个风险点分别生成应对建议。请选择下方风险点查看完整建议，下载文件将包含全部风险点背景和应对结果。`,
+  );
+  container.appendChild(summary);
+
+  const wrapper = document.createElement("div");
+  wrapper.className = "table-responsive";
+  const table = document.createElement("table");
+  table.className = "table table-bordered align-middle risk-advice-result-table";
+  const thead = document.createElement("thead");
+  const headRow = document.createElement("tr");
+  ["序号", "疑点名称", "风险所属期", "应对摘要", "操作"].forEach((header) => appendTextElement(headRow, "th", header));
+  thead.appendChild(headRow);
+  table.appendChild(thead);
+  const tbody = document.createElement("tbody");
+  record.risk_results.forEach((item, index) => {
+    const clue = item.risk_clue;
+    const result = item.result || {};
+    const row = document.createElement("tr");
+    appendTextElement(row, "td", clue.sequence_no || String(index + 1));
+    appendTextElement(row, "td", clue.risk_name || "未提供疑点名称");
+    appendTextElement(row, "td", clue.risk_period || "未提供");
+    const summaryCell = appendTextElement(row, "td", formatShortText(result.answer_summary || result.question_understanding, 120));
+    summaryCell.title = result.answer_summary || result.question_understanding || "";
+    const actionCell = document.createElement("td");
+    const viewButton = document.createElement("button");
+    viewButton.type = "button";
+    viewButton.className = "btn btn-sm btn-outline-primary";
+    viewButton.textContent = "查看应对详情";
+    viewButton.addEventListener("click", () => renderRiskAdviceBatchDetail(item, index));
+    actionCell.appendChild(viewButton);
+    row.appendChild(actionCell);
+    tbody.appendChild(row);
+  });
+  table.appendChild(tbody);
+  wrapper.appendChild(table);
+  container.appendChild(wrapper);
+
+  const detail = document.createElement("div");
+  detail.id = "riskAdviceBatchDetail";
+  detail.className = "risk-advice-detail-panel";
+  appendTextElement(detail, "div", "请选择一条风险点查看应对详情。", "empty-state");
+  container.appendChild(detail);
+  container.classList.remove("d-none");
 }
 
 async function handleRiskAdviceSubmit() {
@@ -918,24 +1178,39 @@ async function handleRiskAdviceSubmit() {
       { label: "背景类型", value: context.type === "company" ? "企业全部疑点" : "单条疑点" },
       { label: "风险点数量", value: `${context.risk_clues.length} 条` },
     ],
-    estimatedTime: "通常 10-50 秒",
+    estimatedTime: context.type === "company" ? "按风险点数量递增" : "通常 10-50 秒",
     stages: ["确认背景", "提交应对任务", "生成核查方向", "整理应对建议"],
-    note: "当前任务基于已选择的下发疑点背景生成辅助应对建议，不自动检索政策法规、历史案例或内部数据。",
+    note:
+      context.type === "company"
+        ? "企业全部疑点将按风险点逐条生成应对建议，并在结果中按风险点分类展示。"
+        : "当前任务基于已选择的下发疑点背景生成辅助应对建议，不自动检索政策法规、历史案例或内部数据。",
     abort: {
       label: "中止本次分析",
       onClick: () => abortActiveRequest("riskAdvice", "riskAdviceLoadingPanel", "疑点背景智能应对已中止"),
     },
   });
   try {
-    const data = await fetchJson("/api/risk-clues/advice", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ taxpayer_name: context.taxpayer_name, risk_clues: context.risk_clues, question }),
-      signal: adviceController.signal,
-    });
+    let data = null;
+    let record = null;
+    if (context.type === "company") {
+      const riskResults = [];
+      for (let index = 0; index < context.risk_clues.length; index += 1) {
+        const clue = context.risk_clues[index];
+        const result = await requestRiskAdvice(context.taxpayer_name, [clue], question, adviceController.signal);
+        riskResults.push({
+          risk_clue: clue,
+          result,
+          created_at: new Date().toLocaleString("zh-CN", { hour12: false }),
+        });
+      }
+      record = createAdviceRecord(null, question, { riskResults });
+      renderRiskAdviceBatchResult(record);
+    } else {
+      data = await requestRiskAdvice(context.taxpayer_name, context.risk_clues, question, adviceController.signal);
+      renderChatResult(data, "riskAdviceResult");
+      record = createAdviceRecord(data, question);
+    }
     clearLoadingPanel("riskAdviceLoadingPanel");
-    renderChatResult(data, "riskAdviceResult");
-    const record = createAdviceRecord(data, question);
     saveAdviceRecord(record);
     renderRiskCompanyMeta(selectedRiskCompanyClues());
     $("riskCompanyDetailMeta").textContent = `${selectedRiskCompanyClues().length} 条风险点 · ${getCompanyAdviceRecords(context.taxpayer_name).length} 条建议记录`;
@@ -1068,8 +1343,7 @@ function getReportKey(report) {
   return report.record_id || `row-${report.row_index}`;
 }
 
-async function handleParseReport() {
-  const file = $("excelInput").files[0];
+async function parseExcelReportFile(file, button = null, spinner = null) {
   if (!file) {
     showToast("请先选择 .xlsx 文件。");
     return;
@@ -1077,7 +1351,7 @@ async function handleParseReport() {
 
   const formData = new FormData();
   formData.append("file", file);
-  setLoading($("parseBtn"), $("parseSpinner"), true);
+  setLoading(button, spinner, true);
   try {
     const data = await fetchJson("/api/report/parse", {
       method: "POST",
@@ -1088,13 +1362,16 @@ async function handleParseReport() {
     state.lastReviewText = "";
     state.reviewCache = {};
     renderReportList(state.reports);
-    $("uploadStage").classList.add("d-none");
+    if ($("reportExcelPanel")) $("reportExcelPanel").classList.remove("d-none");
+    if ($("reportWordPanel")) $("reportWordPanel").classList.add("d-none");
+    if ($("reportUnifiedResetBtn")) $("reportUnifiedResetBtn").classList.remove("d-none");
     $("selectStage").classList.remove("d-none");
     $("reviewStage").classList.add("d-none");
+    showToast("Excel 报告清单解析完成。", "success");
   } catch (error) {
     showToast(error.message);
   } finally {
-    setLoading($("parseBtn"), $("parseSpinner"), false);
+    setLoading(button, spinner, false);
   }
 }
 
@@ -1123,6 +1400,10 @@ function selectReport(index) {
 }
 
 function resetUpload() {
+  resetUnifiedReportUpload();
+}
+
+function resetExcelReportState() {
   if (state.activeRequests.review) {
     state.activeRequests.review.abort();
     clearActiveRequest("review");
@@ -1131,8 +1412,6 @@ function resetUpload() {
   state.selectedReport = null;
   state.lastReviewText = "";
   state.reviewCache = {};
-  $("excelInput").value = "";
-  $("selectedFileName").textContent = "未选择文件";
   $("reportListBody").innerHTML = "";
   $("selectedReportMeta").innerHTML = "";
   $("reviewResult").innerHTML = "";
@@ -1140,7 +1419,6 @@ function resetUpload() {
   $("copyReviewBtn").classList.add("d-none");
   $("downloadReviewBtn").classList.add("d-none");
   clearLoadingPanel("reviewLoadingPanel");
-  $("uploadStage").classList.remove("d-none");
   $("selectStage").classList.add("d-none");
   $("reviewStage").classList.add("d-none");
 }
@@ -1191,95 +1469,210 @@ function appendOriginalReportInfo(parent, report) {
   parent.appendChild(panel);
 }
 
-function appendReviewTopSummary(parent, data) {
+function appendReviewConclusionPanel(parent, data, objectTitle) {
   const panel = document.createElement("section");
-  panel.className = "review-summary-panel";
-  appendTextElement(panel, "h3", "复核结论摘要");
-  appendTextElement(panel, "p", data.final_review_opinion);
-  if (data.manual_conclusion_support_check) {
-    appendTextElement(
-      panel,
-      "p",
-      `人工认定结果支撑状态：${data.manual_conclusion_support_check.support_status}`,
-      "summary-status",
-    );
-  }
+  panel.className = "review-conclusion-panel";
+  appendTextElement(panel, "h3", "复核结论");
+  appendTextElement(panel, "div", objectTitle, "object-title");
+  appendTextElement(panel, "p", buildShortReviewConclusion(data));
   parent.appendChild(panel);
 }
 
-function renderReviewResult(data, options = {}) {
-  const container = $(options.containerId || "reviewResult");
-  container.innerHTML = "";
+function buildShortReviewConclusion(data) {
+  const supportStatus = data.manual_conclusion_support_check
+    ? data.manual_conclusion_support_check.support_status
+    : "无法判断";
+  const qualityLevel = data.quality_evaluation ? data.quality_evaluation.overall_level : "无法判断";
+  return `支撑性：${supportStatus}；质效评价：${qualityLevel}。${data.final_review_opinion || "建议人工复核。"}`
+}
 
-  if (options.fromCache) {
-    appendTextElement(container, "div", "已展示本次页面会话中生成的复核结果。如需重新调用模型，请点击“重新复核”。", "cache-notice");
+function makeReviewSymbol(symbol, label, tone) {
+  return { symbol, label, tone };
+}
+
+function aggregateEnumStatus(values, positive, partial, negative) {
+  if (!values.length) return makeReviewSymbol("△", "无法判断", "warn");
+  if (values.some((value) => negative.includes(value))) return makeReviewSymbol("×", "存在问题", "bad");
+  if (values.some((value) => partial.includes(value))) return makeReviewSymbol("△", "需要关注", "warn");
+  if (values.every((value) => positive.includes(value))) return makeReviewSymbol("✓", "通过", "good");
+  return makeReviewSymbol("△", "无法判断", "warn");
+}
+
+function reviewKeywordStatus(data) {
+  const status = data.keyword_check ? data.keyword_check.status || "" : "";
+  const content = data.keyword_check ? data.keyword_check.content || "" : "";
+  if (status.includes("未发现") || content.includes("未发现明显问题")) return makeReviewSymbol("✓", "未命中", "good");
+  if (status.includes("发现") || content.includes("可能存在") || content.includes("需要进一步")) {
+    return makeReviewSymbol("×", "命中", "bad");
   }
+  return makeReviewSymbol("△", "待人工确认", "warn");
+}
 
+function getReviewMatrixRow(data, label) {
+  const structureValues = (data.structure_analysis.rows || []).map((row) => row.match_status);
+  const completenessValues = (data.response_completeness_check.rows || []).map((row) => row.coverage_status);
+  const conclusionValues = (data.response_conclusion_check.rows || []).map((row) => row.match_status);
+  const supportStatus = data.manual_conclusion_support_check
+    ? data.manual_conclusion_support_check.support_status
+    : "无法判断";
+  const qualityLevel = data.quality_evaluation ? data.quality_evaluation.overall_level : "无法判断";
+
+  return {
+    risk_label: label || inferRiskLabel(data),
+    structure: aggregateEnumStatus(structureValues, ["匹配"], ["部分匹配"], ["未匹配"]),
+    keyword: reviewKeywordStatus(data),
+    completeness: aggregateEnumStatus(completenessValues, ["已覆盖"], ["部分覆盖", "无法判断"], ["未覆盖"]),
+    conclusion: aggregateEnumStatus(conclusionValues, ["匹配"], ["部分匹配", "无法判断"], ["未匹配"]),
+    support: aggregateEnumStatus([supportStatus], ["支撑充分"], ["部分支撑", "无法判断"], ["支撑不足"]),
+    quality: aggregateEnumStatus([qualityLevel], ["较完整"], ["基本完整", "无法判断"], ["待完善"]),
+    opinion: formatShortText(data.final_review_opinion, 80),
+  };
+}
+
+function inferRiskLabel(data) {
+  const conclusionRow = data.response_conclusion_check.rows && data.response_conclusion_check.rows[0];
+  if (conclusionRow && conclusionRow.risk_point) return conclusionRow.risk_point;
+  const completenessRow = data.response_completeness_check.rows && data.response_completeness_check.rows[0];
+  if (completenessRow && completenessRow.assigned_issue) return completenessRow.assigned_issue;
+  return data.report_object || "报告整体";
+}
+
+function appendReviewStatusCell(row, status) {
+  const cell = document.createElement("td");
+  const badge = document.createElement("span");
+  badge.className = `review-symbol ${status.tone}`;
+  badge.textContent = status.symbol;
+  badge.title = status.label;
+  cell.appendChild(badge);
+  appendTextElement(cell, "span", status.label, "review-symbol-label");
+  row.appendChild(cell);
+}
+
+function appendReviewMatrix(parent, rows) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "table-responsive";
+  const table = document.createElement("table");
+  table.className = "table table-bordered align-middle review-matrix-table";
+  const thead = document.createElement("thead");
+  const headRow = document.createElement("tr");
+  ["风险点", "结构规范", "关键字", "核实覆盖", "结论匹配", "支撑性", "质效", "简要意见"].forEach((header) => {
+    appendTextElement(headRow, "th", header);
+  });
+  thead.appendChild(headRow);
+  table.appendChild(thead);
+
+  const tbody = document.createElement("tbody");
+  rows.forEach((item) => {
+    const row = document.createElement("tr");
+    appendTextElement(row, "td", item.risk_label);
+    appendReviewStatusCell(row, item.structure);
+    appendReviewStatusCell(row, item.keyword);
+    appendReviewStatusCell(row, item.completeness);
+    appendReviewStatusCell(row, item.conclusion);
+    appendReviewStatusCell(row, item.support);
+    appendReviewStatusCell(row, item.quality);
+    appendTextElement(row, "td", item.opinion);
+    tbody.appendChild(row);
+  });
+  table.appendChild(tbody);
+  wrapper.appendChild(table);
+  parent.appendChild(wrapper);
+}
+
+function appendReviewSummaryPanel(parent, data) {
+  const panel = document.createElement("section");
+  panel.className = "review-summary-panel";
+  appendTextElement(panel, "h3", "复核总结");
+  renderList(panel, data.review_summary.specific_situation || []);
+  appendTextElement(panel, "p", data.review_summary.analysis_conclusion || data.final_review_opinion, "summary-status");
+  parent.appendChild(panel);
+}
+
+function appendReviewDetailSections(parent, data, options = {}) {
   if (options.sourceRenderer) {
-    options.sourceRenderer(container);
+    options.sourceRenderer(parent);
   } else {
-    appendOriginalReportInfo(container, state.selectedReport);
+    appendOriginalReportInfo(parent, state.selectedReport);
   }
-  const objectTitle = options.objectTitle || `报告分析对象：${data.report_object}`;
-  appendTextElement(container, "div", objectTitle, "object-title");
-  appendReviewTopSummary(container, data);
 
-  appendSection(container, "一、报告摘要");
-  appendTextElement(container, "p", data.report_summary);
+  appendSection(parent, "一、报告摘要");
+  appendTextElement(parent, "p", data.report_summary);
 
-  appendSection(container, "二、报告结构分析");
+  appendSection(parent, "二、报告结构分析");
   appendTable(
-    container,
+    parent,
     ["标题规范表述", "实际表述", "语义匹配情况"],
     data.structure_analysis.rows || [],
     ["standard_title", "actual_expression", "match_status"],
   );
-  appendTextElement(container, "p", `说明：${data.structure_analysis.note}`);
+  appendTextElement(parent, "p", `说明：${data.structure_analysis.note}`);
 
-  appendSection(container, "三、关键字检查");
-  appendTextElement(container, "p", data.keyword_check.content);
+  appendSection(parent, "三、关键字检查");
+  appendTextElement(parent, "p", data.keyword_check.content);
 
-  appendSection(container, "四、应对完整性检查");
+  appendSection(parent, "四、应对完整性检查");
   appendTable(
-    container,
+    parent,
     ["下发疑点", "报告中风险核实情况", "是否覆盖", "数据支撑"],
     data.response_completeness_check.rows || [],
     ["assigned_issue", "verification_status", "coverage_status", "data_support"],
   );
-  appendTextElement(container, "p", `说明：${data.response_completeness_check.note}`);
-  appendTextElement(container, "p", `结论：${data.response_completeness_check.conclusion}`);
+  appendTextElement(parent, "p", `说明：${data.response_completeness_check.note}`);
+  appendTextElement(parent, "p", `结论：${data.response_completeness_check.conclusion}`);
 
-  appendSection(container, "五、应对结论检查");
+  appendSection(parent, "五、应对结论检查");
   appendTable(
-    container,
+    parent,
     ["风险点", "处理措施", "语义匹配情况"],
     data.response_conclusion_check.rows || [],
     ["risk_point", "treatment_measure", "match_status"],
   );
-  appendTextElement(container, "p", `说明：${data.response_conclusion_check.note}`);
-  appendTextElement(container, "p", `提示：${data.response_conclusion_check.tip}`);
-  appendTextElement(container, "p", `结论：${data.response_conclusion_check.conclusion}`);
+  appendTextElement(parent, "p", `说明：${data.response_conclusion_check.note}`);
+  appendTextElement(parent, "p", `提示：${data.response_conclusion_check.tip}`);
+  appendTextElement(parent, "p", `结论：${data.response_conclusion_check.conclusion}`);
 
-  appendSection(container, "六、人工认定结果支撑性检查");
+  appendSection(parent, "六、人工认定结果支撑性检查");
   appendTable(
-    container,
+    parent,
     ["人工认定结果", "支撑状态", "支撑依据", "缺口分析", "结论"],
     data.manual_conclusion_support_check ? [data.manual_conclusion_support_check] : [],
     ["manual_conclusion", "support_status", "evidence_summary", "gap_analysis", "conclusion"],
   );
 
-  appendSection(container, "七、应对质效评估");
-  appendTextElement(container, "p", `总体评价：${data.quality_evaluation.overall_level}`);
-  appendBullets(container, "已体现的优点", data.quality_evaluation.strengths);
-  appendBullets(container, "待完善问题", data.quality_evaluation.deficiencies);
-  appendBullets(container, "修改建议", data.quality_evaluation.improvement_suggestions);
+  appendSection(parent, "七、应对质效评估");
+  appendTextElement(parent, "p", `总体评价：${data.quality_evaluation.overall_level}`);
+  appendBullets(parent, "已体现的优点", data.quality_evaluation.strengths);
+  appendBullets(parent, "待完善问题", data.quality_evaluation.deficiencies);
+  appendBullets(parent, "修改建议", data.quality_evaluation.improvement_suggestions);
 
-  appendSection(container, "八、复核情况总结");
-  appendBullets(container, "具体情况", data.review_summary.specific_situation);
-  appendTextElement(container, "p", `分析结论：${data.review_summary.analysis_conclusion}`);
+  appendSection(parent, "八、复核情况总结");
+  appendBullets(parent, "具体情况", data.review_summary.specific_situation);
+  appendTextElement(parent, "p", `分析结论：${data.review_summary.analysis_conclusion}`);
 
-  appendSection(container, "最终复核意见");
-  appendTextElement(container, "p", data.final_review_opinion);
+  appendSection(parent, "最终复核意见");
+  appendTextElement(parent, "p", data.final_review_opinion);
+}
+
+function renderReviewResult(data, options = {}) {
+  const container = $(options.containerId || "reviewResult");
+  container.innerHTML = "";
+  container.className = "review-result mt-4";
+
+  if (options.fromCache) {
+    appendTextElement(container, "div", "已展示本次页面会话中生成的复核结果。如需重新调用模型，请点击“重新复核”。", "cache-notice");
+  }
+
+  const objectTitle = options.objectTitle || `复核对象：${data.report_object}`;
+  appendReviewConclusionPanel(container, data, objectTitle);
+  appendSection(container, "复核表格");
+  appendReviewMatrix(container, [getReviewMatrixRow(data, options.riskLabel)]);
+  appendReviewSummaryPanel(container, data);
+
+  const detail = document.createElement("details");
+  detail.className = "review-detail-details";
+  appendTextElement(detail, "summary", "展开复核详情");
+  appendReviewDetailSections(detail, data, options);
+  container.appendChild(detail);
 
   const plainText = options.plainTextFormatter ? options.plainTextFormatter(data) : formatReviewPlainText(data);
   if (options.textTarget === "word") {
@@ -1378,14 +1771,6 @@ function formatReviewPlainText(data, options = {}) {
   return lines.join("\n");
 }
 
-function switchReportReviewMode(mode) {
-  const isWord = mode === "word";
-  $("reportExcelPanel").classList.toggle("d-none", isWord);
-  $("reportWordPanel").classList.toggle("d-none", !isWord);
-  $("reportExcelModeBtn").classList.toggle("active", !isWord);
-  $("reportWordModeBtn").classList.toggle("active", isWord);
-}
-
 function appendWordReportInfo(parent) {
   if (!state.wordReport) return;
   const panel = document.createElement("section");
@@ -1439,7 +1824,7 @@ function formatWordRiskPointPlainText(point) {
 function createWordReviewContext(scope, point) {
   return {
     scope,
-    scope_label: scope === "risk_point" && point ? `单风险点复核：风险点${formatWordRiskPointLabel(point)}` : "全面复核",
+    scope_label: scope === "risk_point" && point ? `单风险点复核：风险点${formatWordRiskPointLabel(point)}` : "全体风险点逐项复核",
     risk_point: point || null,
     created_at: new Date().toLocaleString("zh-CN", { hour12: false }),
   };
@@ -1523,7 +1908,7 @@ function renderWordReviewRecordCard(container, record, emptyText) {
 
   const header = document.createElement("div");
   header.className = "review-record-header";
-  const title = record.scope === "risk_point" ? "当前风险点复核记录" : "全面复核记录";
+  const title = record.scope === "risk_point" ? "当前风险点复核记录" : "全体风险点复核记录";
   appendTextElement(header, "strong", title);
   appendTextElement(header, "span", `${record.context.scope_label} · ${record.created_at}`);
   container.appendChild(header);
@@ -1567,6 +1952,11 @@ function clearWordReviewDisplay() {
 
 function viewWordReviewRecord(record) {
   setCurrentWordReviewRecord(record);
+  if (record.risk_results && record.risk_results.length) {
+    renderWordBatchReviewResult(record);
+    $("wordReviewResult").scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
   renderReviewResult(record.data, {
     containerId: "wordReviewResult",
     copyButtonId: "copyWordReviewBtn",
@@ -1581,7 +1971,7 @@ function viewWordReviewRecord(record) {
 
 function downloadWordReviewRecord(record) {
   const baseName = state.wordReport && state.wordReport.filename ? state.wordReport.filename.replace(/\.[^.]+$/, "") : "Word完整报告";
-  const scopeName = record.context.risk_point ? `风险点${formatWordRiskPointLabel(record.context.risk_point)}` : "全面复核";
+  const scopeName = record.context.risk_point ? `风险点${formatWordRiskPointLabel(record.context.risk_point)}` : "全体风险点复核";
   const blob = new Blob([record.plain_text], { type: "text/plain;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -1591,6 +1981,130 @@ function downloadWordReviewRecord(record) {
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
+}
+
+function appendWordRiskPointInfo(parent, point) {
+  const panel = document.createElement("section");
+  panel.className = "source-record-panel";
+  appendTextElement(panel, "h3", `风险点${formatWordRiskPointLabel(point)}：${point.title}`);
+  const grid = document.createElement("div");
+  grid.className = "record-meta-grid";
+  [
+    ["拟处理意见", point.proposed_opinion_status || "未识别"],
+    ["验证情况长度", `${(point.verification || "").length} 字`],
+    ["政策依据", point.policy_basis ? "已提供" : "未提供"],
+  ].forEach(([label, value]) => {
+    const item = document.createElement("div");
+    item.className = "record-meta-item";
+    appendTextElement(item, "span", label, "record-meta-label");
+    appendTextElement(item, "span", value, "record-meta-value");
+    grid.appendChild(item);
+  });
+  panel.appendChild(grid);
+  appendTextElement(panel, "p", point.description || "未识别风险点具体描述");
+  parent.appendChild(panel);
+}
+
+function formatWordBatchPlainText(record) {
+  const lines = [
+    formatWordSourcePlainText(record.context),
+    "",
+    "全体风险点复核结果",
+    `生成时间：${record.created_at}`,
+    `风险点数量：${record.risk_results.length}`,
+    "",
+  ];
+  record.risk_results.forEach((item, index) => {
+    const point = item.point;
+    lines.push(
+      `风险点${formatWordRiskPointLabel(point)}：${point.title}`,
+      `序号：${index + 1}`,
+      formatReviewPlainText(item.data, {
+        includeOriginal: false,
+        objectTitle: formatWordReviewObjectTitle(item.data, item.context),
+      }),
+      "",
+    );
+  });
+  return lines.join("\n");
+}
+
+function createWordBatchReviewRecord(pointRecords, context) {
+  const record = {
+    id: `${Date.now()}`,
+    key: "full",
+    scope: "full",
+    created_at: context.created_at,
+    context,
+    risk_results: pointRecords.map((item) => ({
+      point: item.context.risk_point,
+      context: item.context,
+      data: item.data,
+      plain_text: item.plain_text,
+    })),
+    plain_text: "",
+  };
+  record.plain_text = formatWordBatchPlainText(record);
+  return record;
+}
+
+function renderWordBatchReviewResult(record) {
+  const container = $("wordReviewResult");
+  container.innerHTML = "";
+  container.className = "review-result mt-4";
+
+  const objectTitle = state.wordReport
+    ? `复核对象：全体风险点｜${state.wordReport.filename}`
+    : "复核对象：全体风险点";
+  const conclusion = document.createElement("section");
+  conclusion.className = "review-conclusion-panel";
+  appendTextElement(conclusion, "h3", "复核结论");
+  appendTextElement(conclusion, "div", objectTitle, "object-title");
+  const matrixRows = record.risk_results.map((item) =>
+    getReviewMatrixRow(item.data, `风险点${formatWordRiskPointLabel(item.point)}：${item.point.title}`),
+  );
+  const problemCount = matrixRows.filter((row) =>
+    [row.structure, row.keyword, row.completeness, row.conclusion, row.support, row.quality].some((cell) => cell.tone === "bad"),
+  ).length;
+  const attentionCount = matrixRows.filter((row) =>
+    [row.structure, row.keyword, row.completeness, row.conclusion, row.support, row.quality].some((cell) => cell.tone === "warn"),
+  ).length;
+  appendTextElement(
+    conclusion,
+    "p",
+    `已完成 ${record.risk_results.length} 个风险点逐项复核，其中 ${problemCount} 个风险点存在明确问题，${attentionCount} 个风险点存在需关注事项。`,
+  );
+  container.appendChild(conclusion);
+
+  appendSection(container, "复核表格");
+  appendReviewMatrix(container, matrixRows);
+
+  const summary = document.createElement("section");
+  summary.className = "review-summary-panel";
+  appendTextElement(summary, "h3", "复核总结");
+  const finalOpinions = record.risk_results.map((item) => item.data.final_review_opinion).filter(Boolean);
+  renderList(summary, finalOpinions.length ? finalOpinions : ["未返回明确复核意见。"]);
+  appendTextElement(summary, "p", "全量复核已按风险点分别生成结果，可在风险点列表中查看或保存单点复核记录。", "summary-status");
+  container.appendChild(summary);
+
+  const detail = document.createElement("details");
+  detail.className = "review-detail-details";
+  appendTextElement(detail, "summary", "展开复核详情");
+  record.risk_results.forEach((item) => {
+    const article = document.createElement("article");
+    article.className = "review-risk-detail";
+    appendReviewDetailSections(article, item.data, {
+      sourceRenderer: (parent) => appendWordRiskPointInfo(parent, item.point),
+    });
+    detail.appendChild(article);
+  });
+  container.appendChild(detail);
+
+  state.lastWordReviewContext = record.context;
+  state.lastWordReviewText = record.plain_text;
+  $("copyWordReviewBtn").classList.remove("d-none");
+  $("downloadWordReviewBtn").classList.remove("d-none");
+  container.classList.remove("d-none");
 }
 
 function wordRiskPointMatches(point, query) {
@@ -1771,19 +2285,22 @@ function renderWordReportParsed(data) {
   renderSelectedWordRiskPoint();
   renderWordReviewRecordPanels();
   $("wordParsedStage").classList.remove("d-none");
-  $("wordResetBtn").classList.remove("d-none");
+  if ($("reportWordPanel")) $("reportWordPanel").classList.remove("d-none");
+  if ($("reportExcelPanel")) $("reportExcelPanel").classList.add("d-none");
+  if ($("reportUnifiedResetBtn")) $("reportUnifiedResetBtn").classList.remove("d-none");
 }
 
 function resetWordReport() {
+  if (state.activeRequests.wordReview) {
+    state.activeRequests.wordReview.abort();
+    clearActiveRequest("wordReview");
+  }
   state.wordReport = null;
   state.selectedWordRiskPointIndex = null;
   state.wordReviewRecords = { full: null, riskPoints: {} };
   state.lastWordReviewText = "";
   state.lastWordReviewContext = null;
-  $("wordReportInput").value = "";
-  $("wordReportFileName").textContent = "未选择文件";
   $("wordParsedStage").classList.add("d-none");
-  $("wordResetBtn").classList.add("d-none");
   $("wordRiskPointBody").innerHTML = "";
   $("wordRiskSearchSummary").textContent = "";
   $("wordReportMeta").innerHTML = "";
@@ -1799,8 +2316,7 @@ function resetWordReport() {
   clearLoadingPanel("wordReviewLoadingPanel");
 }
 
-async function handleParseWordReport() {
-  const file = $("wordReportInput").files[0];
+async function parseWordReportFile(file, button = null, spinner = null) {
   if (!file) {
     showToast("请先选择 .docx Word 报告。");
     return;
@@ -1808,7 +2324,7 @@ async function handleParseWordReport() {
 
   const formData = new FormData();
   formData.append("file", file);
-  setLoading($("wordParseBtn"), $("wordParseSpinner"), true);
+  setLoading(button, spinner, true);
   try {
     const data = await fetchJson("/api/report/word/parse", {
       method: "POST",
@@ -1819,7 +2335,7 @@ async function handleParseWordReport() {
   } catch (error) {
     showToast(error.message);
   } finally {
-    setLoading($("wordParseBtn"), $("wordParseSpinner"), false);
+    setLoading(button, spinner, false);
   }
 }
 
@@ -1833,6 +2349,10 @@ async function handleWordReview(scope = "full") {
     showToast("请先选择需要复核的风险点。");
     return;
   }
+  if (scope === "full" && !state.wordReport.risk_points.length) {
+    showToast("当前 Word 报告未解析出风险点，无法执行全体风险点复核。");
+    return;
+  }
 
   const button = scope === "risk_point" ? $("wordReviewPointBtn") : $("wordReviewAllBtn");
   const spinner = scope === "risk_point" ? $("wordReviewPointSpinner") : $("wordReviewAllSpinner");
@@ -1844,16 +2364,16 @@ async function handleWordReview(scope = "full") {
   const reviewController = new AbortController();
   state.activeRequests.wordReview = reviewController;
   startLoadingPanel("wordReviewLoadingPanel", {
-    title: scope === "risk_point" ? "单风险点复核任务处理中" : "Word 完整报告全面复核任务处理中",
+    title: scope === "risk_point" ? "单风险点复核任务处理中" : "全体风险点逐项复核任务处理中",
     context: [
       { label: "文件名", value: state.wordReport.filename },
       { label: "复核范围", value: scope === "risk_point" ? `风险点${formatWordRiskPointLabel(point)}` : "全面复核" },
       { label: "全文长度", value: `${state.wordReport.text_length} 字` },
       { label: "风险点数量", value: `${state.wordReport.risk_points.length} 个` },
     ],
-    estimatedTime: scope === "risk_point" ? "通常 20-60 秒" : "通常 30-90 秒",
-    stages: ["确认 Word 结构", "提交复核任务", "分析风险点完整性", "生成复核意见"],
-    note: "复核依据当前 Word 提取文本和结构化风险点进行，不重新判定企业风险，不自动检索政策法规、历史案例、企业外部数据或关键字规则库。",
+    estimatedTime: scope === "risk_point" ? "通常 20-60 秒" : "按风险点数量递增",
+    stages: ["确认 Word 结构", "提交复核任务", "逐项分析风险点完整性", "生成复核意见"],
+    note: "复核依据当前 Word 提取文本和结构化风险点进行，不重新判定企业风险；关键字检查按内置规则确定性执行。",
     stageDurationMs: 9000,
     abort: {
       label: "中止本次复核",
@@ -1861,34 +2381,59 @@ async function handleWordReview(scope = "full") {
     },
   });
   try {
-    const payload = {
-      ...state.wordReport,
-      review_scope: scope,
-      selected_risk_point_index: scope === "risk_point" ? point.index : null,
-    };
-    const data = await fetchJson("/api/report/word/review", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-      signal: reviewController.signal,
-    });
-    clearLoadingPanel("wordReviewLoadingPanel");
-    const record = createWordReviewRecord(data, reviewContext);
-    saveWordReviewRecord(record);
-    setCurrentWordReviewRecord(record);
-    renderReviewResult(data, {
-      containerId: "wordReviewResult",
-      copyButtonId: "copyWordReviewBtn",
-      downloadButtonId: "downloadWordReviewBtn",
-      textTarget: "word",
-      sourceRenderer: appendWordReportInfo,
-      objectTitle: formatWordReviewObjectTitle(data, reviewContext),
-      plainTextFormatter: () => record.plain_text,
-    });
+    if (scope === "full") {
+      const pointRecords = [];
+      for (const riskPoint of state.wordReport.risk_points) {
+        const pointContext = createWordReviewContext("risk_point", riskPoint);
+        const data = await fetchJson("/api/report/word/review", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...state.wordReport,
+            review_scope: "risk_point",
+            selected_risk_point_index: riskPoint.index,
+          }),
+          signal: reviewController.signal,
+        });
+        const pointRecord = createWordReviewRecord(data, pointContext);
+        saveWordReviewRecord(pointRecord);
+        pointRecords.push(pointRecord);
+      }
+      clearLoadingPanel("wordReviewLoadingPanel");
+      const fullRecord = createWordBatchReviewRecord(pointRecords, reviewContext);
+      saveWordReviewRecord(fullRecord);
+      setCurrentWordReviewRecord(fullRecord);
+      renderWordBatchReviewResult(fullRecord);
+    } else {
+      const data = await fetchJson("/api/report/word/review", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...state.wordReport,
+          review_scope: scope,
+          selected_risk_point_index: point.index,
+        }),
+        signal: reviewController.signal,
+      });
+      clearLoadingPanel("wordReviewLoadingPanel");
+      const record = createWordReviewRecord(data, reviewContext);
+      saveWordReviewRecord(record);
+      setCurrentWordReviewRecord(record);
+      renderReviewResult(data, {
+        containerId: "wordReviewResult",
+        copyButtonId: "copyWordReviewBtn",
+        downloadButtonId: "downloadWordReviewBtn",
+        textTarget: "word",
+        sourceRenderer: appendWordReportInfo,
+        objectTitle: formatWordReviewObjectTitle(data, reviewContext),
+        plainTextFormatter: () => record.plain_text,
+        riskLabel: `风险点${formatWordRiskPointLabel(point)}：${point.title}`,
+      });
+    }
     renderWordRiskPointList();
     renderSelectedWordRiskPoint();
     renderWordReviewRecordPanels();
-    showToast(scope === "risk_point" ? "当前风险点复核结果已保存。" : "全面复核结果已保存。", "success");
+    showToast(scope === "risk_point" ? "当前风险点复核结果已保存。" : "全体风险点复核结果已保存。", "success");
   } catch (error) {
     if (error.name === "AbortError") return;
     showLoadingError("wordReviewLoadingPanel", "Word 报告复核任务未完成", error.message);
@@ -1920,7 +2465,7 @@ async function handleReview() {
     ],
     estimatedTime: "通常 20-60 秒",
     stages: ["确认报告正文", "提交复核任务", "分析结构与完整性", "生成复核意见"],
-    note: "复核依据当前情况说明及上传表中的疑点、人工认定结果等字段进行，不重新判定企业风险，不自动检索政策法规、历史案例、企业外部数据或关键字规则库。",
+    note: "复核依据当前情况说明及上传表字段进行，不重新判定企业风险；关键字检查按内置规则确定性执行。",
     stageDurationMs: 7000,
     abort: {
       label: "中止本次复核",
@@ -2008,7 +2553,7 @@ function downloadWordReviewResult() {
   }
   const context = state.lastWordReviewContext;
   const baseName = state.wordReport && state.wordReport.filename ? state.wordReport.filename.replace(/\.[^.]+$/, "") : "Word完整报告";
-  const scopeName = context && context.risk_point ? `风险点${formatWordRiskPointLabel(context.risk_point)}` : "全面复核";
+  const scopeName = context && context.risk_point ? `风险点${formatWordRiskPointLabel(context.risk_point)}` : "全体风险点复核";
   const blob = new Blob([state.lastWordReviewText], { type: "text/plain;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -2020,6 +2565,42 @@ function downloadWordReviewResult() {
   URL.revokeObjectURL(url);
 }
 
+function resetUnifiedReportUpload() {
+  resetExcelReportState();
+  resetWordReport();
+  if ($("reportFileInput")) $("reportFileInput").value = "";
+  if ($("reportUnifiedFileName")) $("reportUnifiedFileName").textContent = "未选择文件";
+  if ($("reportExcelPanel")) $("reportExcelPanel").classList.add("d-none");
+  if ($("reportWordPanel")) $("reportWordPanel").classList.add("d-none");
+  if ($("reportUnifiedResetBtn")) $("reportUnifiedResetBtn").classList.add("d-none");
+  clearLoadingPanel("reviewLoadingPanel");
+  clearLoadingPanel("wordReviewLoadingPanel");
+}
+
+async function handleUnifiedReportUpload() {
+  const input = $("reportFileInput");
+  const file = input && input.files[0];
+  if (!file) {
+    showToast("请先选择待复核报告文件。");
+    return;
+  }
+  $("reportUnifiedFileName").textContent = file.name;
+  const lowerName = file.name.toLowerCase();
+  if (lowerName.endsWith(".xlsx")) {
+    resetExcelReportState();
+    resetWordReport();
+    await parseExcelReportFile(file, $("reportFileSelectBtn"), $("reportFileSpinner"));
+  } else if (lowerName.endsWith(".docx")) {
+    resetExcelReportState();
+    resetWordReport();
+    await parseWordReportFile(file, $("reportFileSelectBtn"), $("reportFileSpinner"));
+  } else if (lowerName.endsWith(".doc")) {
+    showToast("暂不支持旧版 .doc 格式，请另存为 .docx 后上传。");
+  } else {
+    showToast("文件格式不支持。请上传 .xlsx 报告清单或 .docx Word 完整报告。");
+  }
+}
+
 function bindIfExists(id, eventName, handler) {
   const element = $(id);
   if (element) {
@@ -2027,33 +2608,11 @@ function bindIfExists(id, eventName, handler) {
   }
 }
 
-function setMenuOpen(isOpen) {
-  document.body.classList.toggle("menu-open", isOpen);
-  const button = $("menuToggleBtn");
-  if (button) {
-    button.setAttribute("aria-expanded", String(isOpen));
-  }
-}
-
-function bindMenuDrawer() {
-  bindIfExists("menuToggleBtn", "click", () => setMenuOpen(true));
-  bindIfExists("menuCloseBtn", "click", () => setMenuOpen(false));
-  bindIfExists("menuBackdrop", "click", () => setMenuOpen(false));
-  document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") {
-      setMenuOpen(false);
-    }
-  });
-}
-
 function bindEvents() {
-  bindMenuDrawer();
-  bindIfExists("smartFreeModeBtn", "click", () => switchSmartResponseMode("free"));
-  bindIfExists("smartRiskModeBtn", "click", () => switchSmartResponseMode("risk"));
   bindIfExists("chatSubmitBtn", "click", handleChatSubmit);
   bindIfExists("chatClearBtn", "click", resetChat);
   bindIfExists("chatClearHistoryBtn", "click", clearChatHistory);
-  bindIfExists("riskClueParseBtn", "click", handleParseRiskClues);
+  bindIfExists("riskClueParseBtn", "click", () => $("riskClueInput").click());
   bindIfExists("riskClueResetBtn", "click", resetRiskClues);
   bindIfExists("riskClueSearchBtn", "click", renderRiskClueList);
   bindIfExists("riskClueSearchInput", "keydown", (event) => {
@@ -2072,6 +2631,7 @@ function bindEvents() {
   bindIfExists("riskClueInput", "change", () => {
     const file = $("riskClueInput").files[0];
     $("riskClueFileName").textContent = file ? file.name : "未选择文件";
+    if (file) handleParseRiskClues();
   });
   bindIfExists("policySearchBtn", "click", () => handleKnowledgeSearch("policies"));
   bindIfExists("caseSearchBtn", "click", () => handleKnowledgeSearch("cases"));
@@ -2081,11 +2641,9 @@ function bindEvents() {
   bindIfExists("caseSearchInput", "keydown", (event) => {
     if (event.key === "Enter") handleKnowledgeSearch("cases");
   });
-  bindIfExists("parseBtn", "click", handleParseReport);
-  bindIfExists("reportExcelModeBtn", "click", () => switchReportReviewMode("excel"));
-  bindIfExists("reportWordModeBtn", "click", () => switchReportReviewMode("word"));
-  bindIfExists("wordParseBtn", "click", handleParseWordReport);
-  bindIfExists("wordResetBtn", "click", resetWordReport);
+  bindIfExists("reportFileSelectBtn", "click", () => $("reportFileInput").click());
+  bindIfExists("reportFileInput", "change", handleUnifiedReportUpload);
+  bindIfExists("reportUnifiedResetBtn", "click", resetUnifiedReportUpload);
   bindIfExists("wordRiskSearchBtn", "click", renderWordRiskPointList);
   bindIfExists("wordRiskSearchInput", "keydown", (event) => {
     if (event.key === "Enter") renderWordRiskPointList();
@@ -2095,19 +2653,20 @@ function bindEvents() {
   bindIfExists("wordReviewPointBtn", "click", () => handleWordReview("risk_point"));
   bindIfExists("copyWordReviewBtn", "click", copyWordReviewResult);
   bindIfExists("downloadWordReviewBtn", "click", downloadWordReviewResult);
-  bindIfExists("wordReportInput", "change", () => {
-    const file = $("wordReportInput").files[0];
-    $("wordReportFileName").textContent = file ? file.name : "未选择文件";
-  });
   bindIfExists("resetUploadBtn", "click", resetUpload);
   bindIfExists("backToListBtn", "click", backToList);
   bindIfExists("reviewBtn", "click", handleReview);
   bindIfExists("copyReviewBtn", "click", copyReviewResult);
   bindIfExists("downloadReviewBtn", "click", downloadReviewResult);
-  bindIfExists("excelInput", "change", () => {
-    const file = $("excelInput").files[0];
-    $("selectedFileName").textContent = file ? file.name : "未选择文件";
-  });
 }
 
-document.addEventListener("DOMContentLoaded", bindEvents);
+function initializePage() {
+  if ($("policySearchResult")) {
+    handleKnowledgeSearch("policies", 3000);
+  }
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  bindEvents();
+  initializePage();
+});

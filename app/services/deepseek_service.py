@@ -219,6 +219,104 @@ class DeepSeekService:
             return stripped
         return f"{stripped[:limit]}\n……（内容较长，已截取前 {limit} 字用于本次模型复核）"
 
+    @staticmethod
+    def _split_sentences(text: str) -> list[str]:
+        parts = re.split(r"(?<=[。！？；;])|[\n\r]+", text or "")
+        return [re.sub(r"\s+", " ", item).strip() for item in parts if item and item.strip()]
+
+    @staticmethod
+    def _short_hit(text: str, limit: int = 120) -> str:
+        compact = re.sub(r"\s+", " ", text).strip()
+        if len(compact) <= limit:
+            return compact
+        return f"{compact[:limit]}..."
+
+    @classmethod
+    def _find_keyword_hits(
+        cls,
+        texts: list[str],
+        terms: tuple[str, ...],
+        *,
+        forbidden_terms: tuple[str, ...] = (),
+        max_hits: int = 3,
+    ) -> list[str]:
+        hits: list[str] = []
+        seen: set[str] = set()
+        for text in texts:
+            for sentence in cls._split_sentences(text):
+                if not any(term in sentence for term in terms):
+                    continue
+                if forbidden_terms and any(term in sentence for term in forbidden_terms):
+                    continue
+                hit = cls._short_hit(sentence)
+                if hit not in seen:
+                    seen.add(hit)
+                    hits.append(hit)
+                if len(hits) >= max_hits:
+                    return hits
+        return hits
+
+    @staticmethod
+    def _extract_section_chunks(text: str, section_names: tuple[str, ...]) -> list[str]:
+        if not text:
+            return []
+        heading_pattern = re.compile(
+            r"(应对任务基本情况|任务具体情况|风险点\s*[一二三四五六七八九十百\d]+|风险核实情况|核实情况|验证情况|应对结论|风险处理情况|拟处理意见|政策依据)\s*[：:]?",
+        )
+        chunks: list[str] = []
+        for section_name in section_names:
+            pattern = re.compile(rf"{re.escape(section_name)}\s*[：:]?")
+            for match in pattern.finditer(text):
+                start = match.end()
+                next_match = heading_pattern.search(text, start)
+                end = next_match.start() if next_match else len(text)
+                chunk = text[start:end].strip()
+                if chunk:
+                    chunks.append(chunk)
+        return chunks
+
+    @classmethod
+    def _apply_keyword_check(cls, result: ReportReviewResponse, source_text: str) -> None:
+        text = source_text or ""
+        issues: list[str] = []
+
+        self_statement_hits = cls._find_keyword_hits(texts=[text], terms=("自查", "我公司", "我司", "本公司"))
+        if self_statement_hits:
+            issues.append(
+                "发现企业自述类表达，可能存在以纳税人自查代替税务机关核实的问题。命中示例："
+                + "；".join(self_statement_hits)
+            )
+
+        verification_chunks = cls._extract_section_chunks(text, ("风险核实情况", "核实情况", "验证情况", "应对结论")) or [text]
+        inspection_hits = cls._find_keyword_hits(
+            texts=verification_chunks,
+            terms=("暴力虚开", "团伙"),
+            forbidden_terms=("移送稽查",),
+        )
+        if inspection_hits:
+            issues.append(
+                "风险核实情况或应对结论中出现“暴力虚开”“团伙”等表述，且命中句未说明“移送稽查”，建议进一步核实是否需要移送稽查。命中示例："
+                + "；".join(inspection_hits)
+            )
+
+        conclusion_chunks = cls._extract_section_chunks(text, ("应对结论", "风险处理情况", "拟处理意见")) or [text]
+        unfinished_hits = cls._find_keyword_hits(
+            texts=conclusion_chunks,
+            terms=("正在核查中", "正在核实中", "已通知企业", "在整改中", "还未更正"),
+        )
+        if unfinished_hits:
+            issues.append(
+                "应对结论或风险处理情况中存在未完成、待核实或待整改表述，可能说明风险应对尚未完成。命中示例："
+                + "；".join(unfinished_hits)
+            )
+
+        if issues:
+            result.keyword_check.status = "发现疑点"
+            result.keyword_check.content = "\n".join(f"{index + 1}. {issue}" for index, issue in enumerate(issues))
+        else:
+            result.keyword_check.status = "未发现明显问题"
+            result.keyword_check.content = "按既定关键字规则检索，未发现企业自述替代核实、疑似应移送稽查未说明、应对尚未完成等明显问题。"
+
     @classmethod
     def _format_word_risk_points(cls, risk_points: list[WordRiskPoint]) -> str:
         if not risk_points:
@@ -282,8 +380,7 @@ class DeepSeekService:
             }
         parsed = self._normalize_review_json(parsed, manual_conclusion_default=manual_conclusion or "未提供")
         result = self._validate(parsed, ReportReviewResponse)
-        result.keyword_check.status = "暂未启用"
-        result.keyword_check.content = "当前版本暂未接入既有关键字检索指标与规则库，本项不作自动命中判定。"
+        self._apply_keyword_check(result, report_text)
         return result
 
     def review_word_report(
@@ -333,6 +430,6 @@ class DeepSeekService:
             }
         parsed = self._normalize_review_json(parsed, manual_conclusion_default="未提供")
         result = self._validate(parsed, ReportReviewResponse)
-        result.keyword_check.status = "暂未启用"
-        result.keyword_check.content = "当前版本暂未接入既有关键字检索指标与规则库，本项不作自动命中判定。"
+        keyword_source_text = "\n\n".join(point.raw_text for point in review_points if point.raw_text) or full_text
+        self._apply_keyword_check(result, keyword_source_text)
         return result

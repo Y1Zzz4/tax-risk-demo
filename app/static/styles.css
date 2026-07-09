@@ -49,7 +49,10 @@ body {
 }
 
 .workspace-layout {
-  display: block;
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 22px;
+  align-items: start;
 }
 
 .menu-toggle-btn {
@@ -57,7 +60,7 @@ body {
   top: 154px;
   left: 0;
   z-index: 1040;
-  display: inline-flex;
+  display: none;
   align-items: center;
   gap: 8px;
   border: 1px solid #c9d6e2;
@@ -117,23 +120,22 @@ body.menu-open .menu-backdrop {
 }
 
 .side-menu {
-  position: fixed;
-  top: 0;
-  left: 0;
-  z-index: 1050;
-  width: 280px;
-  height: 100vh;
+  position: sticky;
+  top: 16px;
+  z-index: 10;
+  width: auto;
+  min-height: calc(100vh - 32px);
+  height: auto;
   border: 1px solid var(--line);
-  border-left: 0;
   background: var(--surface);
   padding: 18px;
-  box-shadow: 12px 0 32px rgba(18, 39, 61, 0.18);
-  transform: translateX(-104%);
-  transition: transform 180ms ease;
+  box-shadow: none;
+  transform: none;
+  transition: none;
 }
 
 body.menu-open .side-menu {
-  transform: translateX(0);
+  transform: none;
 }
 
 .side-menu-header {
@@ -163,6 +165,7 @@ body.menu-open .side-menu {
 }
 
 .menu-close-btn {
+  display: none;
   width: 32px;
   height: 32px;
   border: 1px solid #c9d6e2;
@@ -1218,6 +1221,182 @@ body.menu-open .side-menu {
   font-weight: 700;
 }
 
+.active-row {
+  background: #f3f8fc;
+}
+
+.module-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 12px;
+}
+
+.module-toolbar h3 {
+  margin: 0;
+  color: var(--gov-blue-dark);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.module-toolbar span {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.company-index-table td,
+.risk-advice-result-table td,
+.review-matrix-table td {
+  vertical-align: middle;
+  overflow-wrap: anywhere;
+}
+
+.risk-advice-detail-panel {
+  margin-top: 16px;
+  border-top: 1px solid var(--line);
+  padding-top: 16px;
+}
+
+.review-conclusion-panel {
+  margin-bottom: 18px;
+  border: 1px solid #cfdbe6;
+  border-left: 4px solid var(--gov-blue);
+  border-radius: 6px;
+  background: #f8fbfd;
+  padding: 16px;
+}
+
+.review-conclusion-panel h3 {
+  margin: 0 0 10px;
+}
+
+.review-conclusion-panel p {
+  margin: 10px 0 0;
+}
+
+.review-matrix-table {
+  min-width: 980px;
+}
+
+.review-symbol {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin-right: 6px;
+  border-radius: 50%;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.review-symbol.good {
+  background: #e7f4ed;
+  color: #1f6b3a;
+}
+
+.review-symbol.warn {
+  background: #fff4d6;
+  color: #8a5a00;
+}
+
+.review-symbol.bad {
+  background: #fde8e6;
+  color: #a1271d;
+}
+
+.review-symbol-label {
+  color: #405468;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.review-detail-details {
+  margin-top: 18px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  padding: 12px 14px;
+}
+
+.review-detail-details > summary {
+  color: var(--gov-blue);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.review-risk-detail {
+  margin-top: 18px;
+  border-top: 1px solid var(--line);
+  padding-top: 18px;
+}
+
+.knowledge-workspace {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.knowledge-index {
+  position: sticky;
+  top: 16px;
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fbfcfe;
+  padding: 12px;
+}
+
+.knowledge-index h3 {
+  margin: 0 0 10px;
+  color: var(--gov-blue-dark);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.policy-tree-button {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #31455a;
+  padding: 8px 9px;
+  text-align: left;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.policy-tree-button:hover,
+.policy-tree-button:focus {
+  background: #eef3f7;
+  color: var(--gov-blue-dark);
+}
+
+.policy-tree-button.active {
+  background: var(--gov-blue);
+  color: #fff;
+  font-weight: 700;
+}
+
+.policy-tree-button.child {
+  padding-left: 18px;
+  font-size: 13px;
+}
+
+.policy-tree-children {
+  margin: 2px 0 8px;
+  border-left: 2px solid #d8e0e8;
+  padding-left: 6px;
+}
+
 .footer-note {
   color: #607185;
   font-size: 13px;
@@ -1231,8 +1410,14 @@ body.menu-open .side-menu {
     flex-direction: column;
   }
 
+  .workspace-layout {
+    grid-template-columns: 1fr;
+  }
+
   .side-menu {
-    width: min(86vw, 300px);
+    position: static;
+    width: 100%;
+    min-height: auto;
   }
 
   .menu-link {
@@ -1275,8 +1460,14 @@ body.menu-open .side-menu {
   .loading-context,
   .record-meta-grid,
   .company-index-list,
-  .stage-list {
+  .stage-list,
+  .knowledge-workspace {
     grid-template-columns: 1fr;
+  }
+
+  .knowledge-index {
+    position: static;
+    max-height: none;
   }
 
   .knowledge-search-row {
