@@ -193,6 +193,7 @@ class KnowledgeSearchItem(BaseModel):
     title: str
     subtitle: str | None = None
     content_preview: str
+    full_text: str | None = None
     fields: dict[str, str]
 
 

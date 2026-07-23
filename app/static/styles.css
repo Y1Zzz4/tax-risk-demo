@@ -1468,6 +1468,33 @@ body {
   padding-left: 6px;
 }
 
+.case-full-text {
+  margin-top: 12px;
+  border: 1px solid #d8e0e8;
+  border-radius: 6px;
+  background: #fbfcfe;
+  padding: 10px 12px;
+}
+
+.case-full-text > summary {
+  color: var(--gov-blue);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.case-full-text pre {
+  max-height: 520px;
+  margin: 12px 0 0;
+  border-top: 1px solid #e2e8ef;
+  padding-top: 12px;
+  color: #263746;
+  font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.8;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
 .footer-note {
   margin: 16px 0 0;
   padding: 0 0 0 2px;

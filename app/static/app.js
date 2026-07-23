@@ -25,6 +25,12 @@ const state = {
     kind: "",
   },
   policyExpandedType: "",
+  caseResults: null,
+  caseFilter: {
+    type: "",
+    kind: "",
+  },
+  caseExpandedType: "",
 };
 
 const $ = (id) => document.getElementById(id);
@@ -904,12 +910,31 @@ function appendKnowledgeFields(parent, fields) {
   parent.appendChild(details);
 }
 
+function appendCaseFullText(parent, item) {
+  if (!item.full_text) return;
+  const details = document.createElement("details");
+  details.className = "case-full-text";
+  appendTextElement(details, "summary", `查看案例全文（${item.full_text.length} 字）`);
+  const pre = document.createElement("pre");
+  pre.textContent = item.full_text;
+  details.appendChild(pre);
+  parent.appendChild(details);
+}
+
 function getPolicyType(item) {
   return (item.fields && item.fields["类型"]) || "未分类";
 }
 
 function getPolicyKind(item) {
   return (item.fields && item.fields["种类"]) || "未分类";
+}
+
+function getCaseType(item) {
+  return (item.fields && item.fields["涉税争议一级分类"]) || "未分类";
+}
+
+function getCaseKind(item) {
+  return (item.fields && item.fields["涉税争议二级分类"]) || "未分类";
 }
 
 function renderKnowledgeCards(container, results) {
@@ -921,10 +946,80 @@ function renderKnowledgeCards(container, results) {
     appendTextElement(card, "h3", item.title);
     if (item.subtitle) appendTextElement(card, "div", item.subtitle, "knowledge-subtitle");
     appendTextElement(card, "p", item.content_preview);
+    appendCaseFullText(card, item);
     appendKnowledgeFields(card, item.fields);
     list.appendChild(card);
   });
   container.appendChild(list);
+}
+
+function renderCaseTreeIndex(results = null) {
+  const index = $("caseTreeIndex");
+  if (!index) return;
+  const items = results || (state.caseResults && state.caseResults.results) || [];
+  index.innerHTML = "";
+  appendTextElement(index, "h3", "案例索引");
+
+  const allButton = document.createElement("button");
+  allButton.type = "button";
+  allButton.className = !state.caseFilter.type && !state.caseFilter.kind ? "policy-tree-button active" : "policy-tree-button";
+  allButton.textContent = `全部案例（${items.length}）`;
+  allButton.addEventListener("click", () => {
+    state.caseFilter = { type: "", kind: "" };
+    state.caseExpandedType = "";
+    renderCaseResultList();
+    renderCaseTreeIndex();
+  });
+  index.appendChild(allButton);
+
+  const groups = items.reduce((acc, item) => {
+    const type = getCaseType(item);
+    const kind = getCaseKind(item);
+    if (!acc[type]) acc[type] = {};
+    if (!acc[type][kind]) acc[type][kind] = 0;
+    acc[type][kind] += 1;
+    return acc;
+  }, {});
+
+  Object.entries(groups)
+    .sort(([left], [right]) => left.localeCompare(right, "zh-Hans-CN"))
+    .forEach(([type, kinds]) => {
+      const typeButton = document.createElement("button");
+      typeButton.type = "button";
+      const isExpanded = state.caseExpandedType === type;
+      typeButton.className = state.caseFilter.type === type && !state.caseFilter.kind ? "policy-tree-button has-children active" : "policy-tree-button has-children";
+      const typeCount = Object.values(kinds).reduce((sum, value) => sum + value, 0);
+      typeButton.textContent = `${isExpanded ? "▾" : "▸"} ${type}（${typeCount}）`;
+      typeButton.addEventListener("click", () => {
+        state.caseFilter = { type, kind: "" };
+        state.caseExpandedType = type;
+        renderCaseResultList();
+        renderCaseTreeIndex();
+      });
+      index.appendChild(typeButton);
+
+      if (!isExpanded) return;
+
+      const kindList = document.createElement("div");
+      kindList.className = "policy-tree-children";
+      Object.entries(kinds)
+        .sort(([left], [right]) => left.localeCompare(right, "zh-Hans-CN"))
+        .forEach(([kind, count]) => {
+          const kindButton = document.createElement("button");
+          kindButton.type = "button";
+          kindButton.className =
+            state.caseFilter.type === type && state.caseFilter.kind === kind ? "policy-tree-button child active" : "policy-tree-button child";
+          kindButton.textContent = `${kind}（${count}）`;
+          kindButton.addEventListener("click", () => {
+            state.caseFilter = { type, kind };
+            state.caseExpandedType = type;
+            renderCaseResultList();
+            renderCaseTreeIndex();
+          });
+          kindList.appendChild(kindButton);
+        });
+      index.appendChild(kindList);
+    });
 }
 
 function renderPolicyTreeIndex(results = null) {
@@ -1023,6 +1118,33 @@ function renderPolicyResultList() {
   renderKnowledgeCards(container, filtered);
 }
 
+function renderCaseResultList() {
+  const container = $("caseSearchResult");
+  if (!container || !state.caseResults) return;
+  const data = state.caseResults;
+  const filter = state.caseFilter;
+  const filtered = data.results.filter((item) => {
+    if (filter.type && getCaseType(item) !== filter.type) return false;
+    if (filter.kind && getCaseKind(item) !== filter.kind) return false;
+    return true;
+  });
+
+  container.innerHTML = "";
+  const status = document.createElement("div");
+  status.className = data.exists ? "knowledge-status" : "knowledge-status warning";
+  appendTextElement(status, "strong", filter.type ? `当前索引：${filter.type}${filter.kind ? ` / ${filter.kind}` : ""}` : data.message);
+  if (data.exists) {
+    appendTextElement(status, "span", `展示 ${filtered.length} 条，当前检索范围 ${data.results.length} 条，数据总记录数 ${data.total_rows}`);
+  }
+  container.appendChild(status);
+
+  if (!data.exists || !filtered.length) {
+    appendTextElement(container, "div", data.exists ? "当前索引下无案例记录，请调整索引或关键词。" : "知识库文件就绪后可直接检索。", "empty-state");
+    return;
+  }
+  renderKnowledgeCards(container, filtered);
+}
+
 function renderKnowledgeResult(resultId, data) {
   const container = $(resultId);
   container.innerHTML = "";
@@ -1043,6 +1165,12 @@ function renderKnowledgeResult(resultId, data) {
       state.policyExpandedType = "";
       renderPolicyTreeIndex(data.results);
     }
+    if (resultId === "caseSearchResult") {
+      state.caseResults = data;
+      state.caseFilter = { type: "", kind: "" };
+      state.caseExpandedType = "";
+      renderCaseTreeIndex(data.results);
+    }
     return;
   }
 
@@ -1055,6 +1183,15 @@ function renderKnowledgeResult(resultId, data) {
     return;
   }
 
+  if (resultId === "caseSearchResult") {
+    state.caseResults = data;
+    state.caseFilter = { type: "", kind: "" };
+    state.caseExpandedType = "";
+    renderCaseTreeIndex(data.results);
+    renderCaseResultList();
+    return;
+  }
+
   renderKnowledgeCards(container, data.results);
 }
 
@@ -1063,7 +1200,7 @@ async function handleKnowledgeSearch(category, limit = null) {
   const query = $(config.inputId).value.trim();
   setLoading($(config.buttonId), $(config.spinnerId), true);
   try {
-    const requestLimit = limit || (category === "policies" ? 3000 : 20);
+    const requestLimit = limit || (category === "policies" || category === "cases" ? 3000 : 20);
     const data = await fetchJson(config.endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -3366,6 +3503,9 @@ function initializePage() {
   restoreReportDemoCache();
   if ($("policySearchResult")) {
     handleKnowledgeSearch("policies", 3000);
+  }
+  if ($("caseSearchResult")) {
+    handleKnowledgeSearch("cases", 3000);
   }
 }
 
